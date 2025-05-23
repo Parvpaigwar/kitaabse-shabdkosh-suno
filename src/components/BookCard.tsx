@@ -5,13 +5,17 @@ import { Button } from "@/components/ui/button";
 interface BookCardProps {
   title: string;
   author: string;
-  language: string;
-  likes: number;
   coverImage?: string;
+  language?: string;
+  likes?: number;
+  likesCount?: number; // Added this property
   isLiked?: boolean;
 }
 
-const BookCard = ({ title, author, language, likes, coverImage, isLiked = false }: BookCardProps) => {
+const BookCard = ({ title, author, language = "Hindi", likes = 0, likesCount = 0, coverImage, isLiked = false }: BookCardProps) => {
+  // Use either likes or likesCount, with likesCount taking precedence
+  const displayLikes = likesCount || likes;
+  
   return (
     <div className="book-card p-6 group hover:scale-105 transition-transform duration-300">
       {/* Book Cover */}
@@ -45,7 +49,7 @@ const BookCard = ({ title, author, language, likes, coverImage, isLiked = false 
           
           <div className="flex items-center gap-1 text-sm text-maroon-600">
             <Heart size={16} className={isLiked ? "fill-current text-red-500" : ""} />
-            <span>{likes}</span>
+            <span>{displayLikes}</span>
           </div>
         </div>
 

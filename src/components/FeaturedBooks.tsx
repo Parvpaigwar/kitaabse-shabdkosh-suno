@@ -51,7 +51,7 @@ const FeaturedBooks = () => {
         .from('books')
         .select(`
           *,
-          likes:likes(count)
+          likes(count)
         `)
         .eq('is_public', true);
         
@@ -62,7 +62,8 @@ const FeaturedBooks = () => {
       
       // Apply sorting
       if (sortValue === "likes") {
-        query = query.order('likes.count', { ascending: false });
+        // Fix: Apply proper sorting method without directly accessing count
+        query = query.order('id', { ascending: false });
       } else {
         query = query.order('created_at', { ascending: false });
       }
@@ -71,10 +72,21 @@ const FeaturedBooks = () => {
       
       if (error) throw error;
       
-      const booksWithLikes = data.map(book => ({
-        ...book,
-        likes_count: book.likes.count
-      }));
+      // Fix: Process likes data correctly by accessing the first element of the array
+      const booksWithLikes = data.map(book => {
+        // Each book has a 'likes' array from the join, which contains a single object with a count property
+        const likesCount = book.likes && book.likes.length > 0 ? book.likes[0].count : 0;
+        
+        return {
+          ...book,
+          likes_count: likesCount
+        };
+      });
+      
+      // If sorting by likes, sort the processed data in memory
+      if (sortValue === "likes") {
+        booksWithLikes.sort((a, b) => b.likes_count - a.likes_count);
+      }
       
       setBooks(booksWithLikes);
     } catch (error) {
@@ -135,7 +147,8 @@ const FeaturedBooks = () => {
                 title={book.title}
                 author={book.author}
                 coverImage={book.cover_url || undefined}
-                likesCount={book.likes_count}
+                language={book.language}
+                likes={book.likes_count}
               />
             </Link>
           ))}

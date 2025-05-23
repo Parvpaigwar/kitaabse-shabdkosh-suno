@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -82,11 +81,18 @@ const Library = () => {
         
       if (error) throw error;
       
-      const booksWithCounts = data.map(book => ({
-        ...book,
-        chunks_count: book.chunks.count,
-        ready_chunks_count: book.ready_chunks.filter((chunk: any) => chunk.status === 'completed').length
-      }));
+      // Fix: Process chunks data correctly by accessing the first element of the array
+      const booksWithCounts = data.map(book => {
+        const chunksCount = book.chunks && book.chunks.length > 0 ? book.chunks[0].count : 0;
+        const readyChunksCount = book.ready_chunks ? 
+          book.ready_chunks.filter((chunk: any) => chunk.status === 'completed').length : 0;
+        
+        return {
+          ...book,
+          chunks_count: chunksCount,
+          ready_chunks_count: readyChunksCount
+        };
+      });
       
       setBooks(booksWithCounts);
     } catch (error) {

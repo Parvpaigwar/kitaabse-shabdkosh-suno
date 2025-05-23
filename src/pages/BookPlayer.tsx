@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,7 +53,7 @@ const BookPlayer = () => {
           .from("books")
           .select(`
             *,
-            likes:likes(count),
+            likes(count),
             user_has_liked:likes!inner(id)
           `)
           .eq("id", id)
@@ -62,9 +61,12 @@ const BookPlayer = () => {
           
         if (bookError) throw bookError;
         
+        // Fix: Process likes data correctly by accessing the first element of the array
+        const likesCount = bookData.likes && bookData.likes.length > 0 ? bookData.likes[0].count : 0;
+        
         const bookWithCounts = {
           ...bookData,
-          likes_count: bookData.likes.count,
+          likes_count: likesCount,
           user_has_liked: user ? bookData.user_has_liked.length > 0 : false
         };
         
