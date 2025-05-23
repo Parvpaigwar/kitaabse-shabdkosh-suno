@@ -2,109 +2,86 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
+ 
 @layer base {
   :root {
-    --background: 31 21% 96%;
-    --foreground: 20 14.3% 4.1%;
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
 
-    --card: 31 21% 98%;
-    --card-foreground: 20 14.3% 4.1%;
-
-    --popover: 31 21% 98%;
-    --popover-foreground: 20 14.3% 4.1%;
-
-    --primary: 346 77% 49%;
-    --primary-foreground: 355 25% 95%;
-
-    --secondary: 40 35% 77%;
-    --secondary-foreground: 25 5.3% 44.7%;
-
-    --muted: 39 20% 92%;
-    --muted-foreground: 25 5.3% 44.7%;
-
-    --accent: 40 35% 77%;
-    --accent-foreground: 25 5.3% 44.7%;
-
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+ 
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+ 
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+ 
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+ 
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+ 
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+ 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 40 20% 84%;
-    --input: 40 20% 84%;
-    --ring: 346 77% 49%;
-
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 10% 3.9%;
+ 
     --radius: 0.5rem;
   }
-
+ 
   .dark {
-    --background: 20 14.3% 4.1%;
-    --foreground: 31 21% 96%;
-
-    --card: 20 14.3% 4.1%;
-    --card-foreground: 31 21% 96%;
-
-    --popover: 20 14.3% 4.1%;
-    --popover-foreground: 31 21% 96%;
-
-    --primary: 346 77% 49%;
-    --primary-foreground: 355 25% 95%;
-
-    --secondary: 12 6.5% 15.1%;
-    --secondary-foreground: 31 21% 96%;
-
-    --muted: 12 6.5% 15.1%;
-    --muted-foreground: 24 5.4% 63.9%;
-
-    --accent: 12 6.5% 15.1%;
-    --accent-foreground: 31 21% 96%;
-
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+ 
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+ 
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+ 
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+ 
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+ 
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+ 
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+ 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 31 21% 96%;
-
-    --border: 12 6.5% 15.1%;
-    --input: 12 6.5% 15.1%;
-    --ring: 346 77% 49%;
+    --destructive-foreground: 0 0% 98%;
+ 
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
   }
 }
-
+ 
 @layer base {
   * {
     @apply border-border;
   }
-
   body {
-    @apply bg-vintage-cream text-foreground font-english;
-    background: linear-gradient(135deg, #f7f3e9 0%, #f4f1e8 100%);
-  }
-
-  .hindi-text {
-    @apply font-hindi;
-  }
-
-  .literary-quote {
-    @apply italic text-maroon-600 font-hindi text-lg;
-  }
-
-  .vintage-border {
-    border: 2px solid #d4af37;
-    border-image: linear-gradient(45deg, #d4af37, #b8860b) 1;
+    @apply bg-background text-foreground;
   }
 }
 
-@layer components {
-  .book-card {
-    @apply bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 border border-sandalwood-200;
-  }
+/* Font settings for Hindi text */
+.font-hindi {
+  font-family: 'Noto Sans Devanagari', sans-serif;
+}
 
-  .btn-primary {
-    @apply bg-maroon-600 hover:bg-maroon-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200;
-  }
-
-  .btn-secondary {
-    @apply bg-sandalwood-200 hover:bg-sandalwood-300 text-maroon-800 px-6 py-3 rounded-lg font-medium transition-colors duration-200;
-  }
-
-  .search-bar {
-    @apply w-full bg-white border-2 border-sandalwood-300 rounded-full px-6 py-4 text-lg focus:outline-none focus:border-maroon-500 shadow-sm;
-  }
+/* Default body font */
+body {
+  font-family: 'Inter', 'Noto Sans Devanagari', sans-serif;
 }

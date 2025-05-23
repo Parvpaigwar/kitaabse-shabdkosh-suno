@@ -9,7 +9,109 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      books: {
+        Row: {
+          author: string
+          cover_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_public: boolean | null
+          language: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          author: string
+          cover_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          language: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          author?: string
+          cover_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          language?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      chunks: {
+        Row: {
+          audio_url: string | null
+          book_id: string
+          chunk_number: number
+          created_at: string
+          id: string
+          status: string
+          text_content: string | null
+        }
+        Insert: {
+          audio_url?: string | null
+          book_id: string
+          chunk_number: number
+          created_at?: string
+          id?: string
+          status?: string
+          text_content?: string | null
+        }
+        Update: {
+          audio_url?: string | null
+          book_id?: string
+          chunk_number?: number
+          created_at?: string
+          id?: string
+          status?: string
+          text_content?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chunks_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      likes: {
+        Row: {
+          book_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          book_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          book_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "likes_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

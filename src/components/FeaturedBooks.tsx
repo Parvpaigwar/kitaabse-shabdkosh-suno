@@ -1,87 +1,154 @@
 
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Loader2, ThumbsUp, Clock } from "lucide-react";
 import BookCard from "./BookCard";
 
+type Book = {
+  id: string;
+  title: string;
+  author: string;
+  description: string | null;
+  language: string;
+  cover_url: string | null;
+  likes_count: number;
+};
+
 const FeaturedBooks = () => {
-  const featuredBooks = [
-    {
-      title: "गोदान",
-      author: "मुंशी प्रेमचंद",
-      language: "Hindi",
-      likes: 1247,
-      isLiked: false
-    },
-    {
-      title: "पूस की रात",
-      author: "मुंशी प्रेमचंद", 
-      language: "Hindi",
-      likes: 856,
-      isLiked: true
-    },
-    {
-      title: "गबन",
-      author: "मुंशी प्रेमचंद",
-      language: "Hindi", 
-      likes: 923,
-      isLiked: false
-    },
-    {
-      title: "चंद्रकांता",
-      author: "देवकी नंदन खत्री",
-      language: "Hindi",
-      likes: 734,
-      isLiked: false
-    },
-    {
-      title: "तितली",
-      author: "जैनेन्द्र कुमार",
-      language: "Hindi",
-      likes: 612,
-      isLiked: true
-    },
-    {
-      title: "राग दरबारी",
-      author: "श्रीलाल शुक्ल",
-      language: "Hindi",
-      likes: 891,
-      isLiked: false
+  const [books, setBooks] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<string>("all");
+  const [sort, setSort] = useState<string>("likes");
+
+  useEffect(() => {
+    fetchBooks(filter, sort);
+
+    // Set up real-time subscription for likes
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'likes' },
+        () => {
+          fetchBooks(filter, sort); // Refresh when likes change
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [filter, sort]);
+
+  const fetchBooks = async (filterValue: string, sortValue: string) => {
+    setLoading(true);
+    
+    try {
+      let query = supabase
+        .from('books')
+        .select(`
+          *,
+          likes:likes(count)
+        `)
+        .eq('is_public', true);
+        
+      // Apply language filter
+      if (filterValue !== "all") {
+        query = query.eq('language', filterValue);
+      }
+      
+      // Apply sorting
+      if (sortValue === "likes") {
+        query = query.order('likes.count', { ascending: false });
+      } else {
+        query = query.order('created_at', { ascending: false });
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      const booksWithLikes = data.map(book => ({
+        ...book,
+        likes_count: book.likes.count
+      }));
+      
+      setBooks(booksWithLikes);
+    } catch (error) {
+      console.error("Error fetching books:", error);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  const handleFilterChange = (value: string) => {
+    setFilter(value);
+  };
+
+  const handleSortChange = (value: string) => {
+    setSort(value);
+  };
 
   return (
-    <section className="py-16 px-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Section Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-maroon-800 hindi-text mb-4">
-            लोकप्रिय पुस्तकें
-          </h2>
-          <div className="w-24 h-1 bg-vintage-gold mx-auto mb-4"></div>
-          <p className="text-lg text-sandalwood-700 max-w-2xl mx-auto">
-            Top Liked Books - Discover the most beloved classics of Hindi literature
-          </p>
+    <section className="py-12 px-4 max-w-7xl mx-auto">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+        <div>
+          <h2 className="text-3xl font-bold mb-2">Explore Books</h2>
+          <p className="text-gray-600">Discover audiobooks in Hindi and more</p>
         </div>
-
-        {/* Books Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {featuredBooks.map((book, index) => (
-            <BookCard
-              key={index}
-              title={book.title}
-              author={book.author}
-              language={book.language}
-              likes={book.likes}
-              isLiked={book.isLiked}
-            />
-          ))}
-        </div>
-
-        {/* View All Button */}
-        <div className="text-center mt-12">
-          <button className="btn-secondary">
-            View All Books
-          </button>
+        
+        <div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-4">
+          <Tabs defaultValue="all" onValueChange={handleFilterChange}>
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="hindi">Hindi</TabsTrigger>
+              <TabsTrigger value="urdu">Urdu</TabsTrigger>
+              <TabsTrigger value="sanskrit">Sanskrit</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          
+          <Tabs defaultValue="likes" onValueChange={handleSortChange}>
+            <TabsList>
+              <TabsTrigger value="likes" className="flex items-center">
+                <ThumbsUp className="h-4 w-4 mr-2" /> Popular
+              </TabsTrigger>
+              <TabsTrigger value="recent" className="flex items-center">
+                <Clock className="h-4 w-4 mr-2" /> Recent
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+        </div>
+      ) : books.length > 0 ? (
+        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {books.map((book) => (
+            <Link to={`/book/${book.id}`} key={book.id}>
+              <BookCard
+                title={book.title}
+                author={book.author}
+                coverImage={book.cover_url || undefined}
+                likesCount={book.likes_count}
+              />
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-16">
+          <h3 className="text-2xl font-semibold mb-4">No books found</h3>
+          <p className="text-gray-600 mb-6">Be the first to share a book with the community!</p>
+          <Link to="/upload">
+            <Button>Upload a Book</Button>
+          </Link>
+        </div>
+      )}
     </section>
   );
 };
