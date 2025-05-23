@@ -2,7 +2,8 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { BookOpen, Upload, Library, User, LogOut } from "lucide-react";
+import { BookOpen, Upload, Library, User, LogOut, Mail } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,10 +11,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 
 const Navbar = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isVerified } = useAuth();
   const { toast } = useToast();
 
   const handleSignOut = async () => {
@@ -21,6 +22,29 @@ const Navbar = () => {
     toast({
       title: "Signed out successfully",
       description: "You have been logged out of KitaabSe.",
+    });
+  };
+
+  const handleResendVerification = async () => {
+    if (!user?.email) return;
+    
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: user.email,
+    });
+    
+    if (error) {
+      toast({
+        title: "Failed to resend verification",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    toast({
+      title: "Verification email sent",
+      description: "Please check your email for a verification link.",
     });
   };
 
@@ -34,6 +58,17 @@ const Navbar = () => {
         <nav className="flex items-center space-x-4">
           {user ? (
             <>
+              {!isVerified && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex items-center gap-2 border-amber-500 text-amber-600"
+                  onClick={handleResendVerification}
+                >
+                  <Mail className="h-4 w-4" /> Verify Email
+                </Button>
+              )}
+              
               <Link to="/upload">
                 <Button variant="ghost" size="sm" className="flex items-center gap-2">
                   <Upload className="h-4 w-4" /> Upload Book
