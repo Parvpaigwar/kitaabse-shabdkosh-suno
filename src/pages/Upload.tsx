@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,11 +10,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2, Upload, Image } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
 const UploadPage = () => {
-  const { user } = useAuth();
+  const { user, isVerified } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -26,37 +25,60 @@ const UploadPage = () => {
     description: "",
     isPublic: true,
     pdf: null as File | null,
+    cover: null as File | null,
   });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'pdf' | 'cover') => {
     if (!e.target.files || e.target.files.length === 0) return;
     
     const file = e.target.files[0];
     const fileSize = file.size / 1024 / 1024; // Size in MB
     
-    if (fileSize > 5) {
-      toast({
-        title: "File too large",
-        description: "Please upload a file smaller than 5 MB.",
-        variant: "destructive",
-      });
-      e.target.value = "";
-      return;
-    }
-    
-    if (!file.type.includes("pdf")) {
-      toast({
-        title: "Invalid file type",
-        description: "Please upload a PDF file.",
-        variant: "destructive",
-      });
-      e.target.value = "";
-      return;
+    if (type === 'pdf') {
+      if (fileSize > 10) {
+        toast({
+          title: "File too large",
+          description: "Please upload a PDF file smaller than 10 MB.",
+          variant: "destructive",
+        });
+        e.target.value = "";
+        return;
+      }
+      
+      if (!file.type.includes("pdf")) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a PDF file.",
+          variant: "destructive",
+        });
+        e.target.value = "";
+        return;
+      }
+    } else if (type === 'cover') {
+      if (fileSize > 5) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5 MB.",
+          variant: "destructive",
+        });
+        e.target.value = "";
+        return;
+      }
+      
+      if (!file.type.includes("image")) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload an image file (JPG, PNG, etc.).",
+          variant: "destructive",
+        });
+        e.target.value = "";
+        return;
+      }
     }
     
     setBookForm({
       ...bookForm,
-      pdf: file,
+      [type]: file,
     });
   };
 
@@ -94,6 +116,15 @@ const UploadPage = () => {
       navigate("/auth");
       return;
     }
+
+    if (!isVerified) {
+      toast({
+        title: "Email verification required",
+        description: "Please verify your email before uploading books",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!bookForm.pdf) {
       toast({
@@ -123,8 +154,29 @@ const UploadPage = () => {
       
       if (bookError) throw new Error(bookError.message);
       
-      // 2. Upload PDF to storage
       const bookId = bookData.id;
+      let coverUrl = null;
+
+      // 2. Upload cover image if provided
+      if (bookForm.cover) {
+        const coverPath = `${user.id}/${bookId}/cover.${bookForm.cover.name.split('.').pop()}`;
+        
+        const { error: coverUploadError } = await supabase.storage
+          .from("book-covers")
+          .upload(coverPath, bookForm.cover);
+        
+        if (coverUploadError) {
+          console.warn("Cover upload failed:", coverUploadError.message);
+        } else {
+          const { data: coverUrlData } = supabase.storage
+            .from("book-covers")
+            .getPublicUrl(coverPath);
+          
+          coverUrl = coverUrlData.publicUrl;
+        }
+      }
+
+      // 3. Upload PDF to storage
       const filePath = `${user.id}/${bookId}/${bookForm.pdf.name}`;
       
       const { error: uploadError } = await supabase.storage
@@ -133,12 +185,20 @@ const UploadPage = () => {
       
       if (uploadError) throw new Error(uploadError.message);
       
-      // 3. Get public URL for the PDF
-      const { data: urlData } = await supabase.storage
+      // 4. Get public URL for the PDF
+      const { data: urlData } = supabase.storage
         .from("books")
         .getPublicUrl(filePath);
+
+      // 5. Update book with cover URL if uploaded
+      if (coverUrl) {
+        await supabase
+          .from("books")
+          .update({ cover_url: coverUrl })
+          .eq("id", bookId);
+      }
       
-      // 4. Create first pending chunk
+      // 6. Create first pending chunk
       const { error: chunkError } = await supabase
         .from("chunks")
         .insert({
@@ -149,21 +209,30 @@ const UploadPage = () => {
       
       if (chunkError) throw new Error(chunkError.message);
       
-      // 5. Trigger the OCR and audio generation process
-      const processRes = await fetch("/api/process-book", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          bookId,
-          pdfUrl: urlData.publicUrl,
-        }),
-      });
-      
-      if (!processRes.ok) {
-        const errorData = await processRes.json();
-        throw new Error(errorData.error || "Failed to process book");
+      // 7. Trigger the OCR and audio generation process
+      try {
+        const processRes = await fetch("/api/process-book", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            bookId,
+            pdfUrl: urlData.publicUrl,
+          }),
+        });
+        
+        if (!processRes.ok) {
+          const errorData = await processRes.json();
+          throw new Error(errorData.error || "Failed to process book");
+        }
+      } catch (processError) {
+        console.warn("Book processing failed:", processError);
+        toast({
+          title: "Book uploaded with warning",
+          description: "Your book was uploaded but audio processing may have failed. You can regenerate audio later.",
+          variant: "destructive",
+        });
       }
       
       // Success!
@@ -183,6 +252,31 @@ const UploadPage = () => {
       setLoading(false);
     }
   };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8 text-center">
+          <h1 className="text-2xl font-bold mb-4">Please log in to upload books</h1>
+          <Button onClick={() => navigate("/auth")}>Go to Login</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isVerified) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8 text-center">
+          <h1 className="text-2xl font-bold mb-4">Email verification required</h1>
+          <p className="mb-4">Please verify your email address before uploading books.</p>
+          <Button onClick={() => navigate("/auth")}>Verify Email</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -247,6 +341,27 @@ const UploadPage = () => {
                   rows={3}
                 />
               </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="cover">Book Cover (optional)</Label>
+                <div className="grid w-full max-w-sm items-center gap-1.5">
+                  <Input
+                    id="cover"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, 'cover')}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Upload a cover image (JPG, PNG, max 5 MB)
+                  </p>
+                </div>
+                {bookForm.cover && (
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <Image className="h-4 w-4" />
+                    {bookForm.cover.name}
+                  </div>
+                )}
+              </div>
               
               <div className="flex items-center space-x-2">
                 <Switch
@@ -258,13 +373,13 @@ const UploadPage = () => {
               </div>
               
               <div className="space-y-1">
-                <Label htmlFor="pdf">Upload PDF (max 5 MB) *</Label>
+                <Label htmlFor="pdf">Upload PDF (max 10 MB) *</Label>
                 <div className="grid w-full max-w-sm items-center gap-1.5">
                   <Input
                     id="pdf"
                     type="file"
                     accept=".pdf"
-                    onChange={handleFileChange}
+                    onChange={(e) => handleFileChange(e, 'pdf')}
                     required
                   />
                 </div>

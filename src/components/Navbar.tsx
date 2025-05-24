@@ -2,7 +2,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { BookOpen, Upload, Library, User, LogOut, Mail } from "lucide-react";
+import { BookOpen, Upload, Library, User, LogOut, Mail, Crown, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
@@ -11,10 +11,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
 const Navbar = () => {
-  const { user, signOut, isVerified } = useAuth();
+  const { user, signOut, isVerified, userRole } = useAuth();
   const { toast } = useToast();
 
   const handleSignOut = async () => {
@@ -28,24 +29,35 @@ const Navbar = () => {
   const handleResendVerification = async () => {
     if (!user?.email) return;
     
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email: user.email,
-    });
-    
-    if (error) {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: user.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`,
+        }
+      });
+      
+      if (error) {
+        toast({
+          title: "Failed to resend verification",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      toast({
+        title: "Verification email sent",
+        description: "Please check your email for a verification code.",
+      });
+    } catch (error) {
       toast({
         title: "Failed to resend verification",
-        description: error.message,
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
-      return;
     }
-    
-    toast({
-      title: "Verification email sent",
-      description: "Please check your email for a verification link.",
-    });
   };
 
   return (
@@ -58,7 +70,7 @@ const Navbar = () => {
         <nav className="flex items-center space-x-4">
           {user ? (
             <>
-              {!isVerified && (
+              {!isVerified && userRole !== 'superadmin' && (
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -76,18 +88,43 @@ const Navbar = () => {
               </Link>
               <Link to="/library">
                 <Button variant="ghost" size="sm" className="flex items-center gap-2">
-                  <Library className="h-4 w-4" /> My Library
+                  <Library className="h-4 w-4" /> 
+                  {userRole === 'superadmin' ? 'All Books' : 'My Library'}
                 </Button>
               </Link>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="flex items-center gap-2">
-                    <User className="h-4 w-4" /> Account
+                    <User className="h-4 w-4" /> 
+                    Account
+                    {userRole === 'superadmin' && (
+                      <Crown className="h-3 w-3 text-amber-500" />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem disabled>
-                    <span className="text-sm">{user.email}</span>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">{user.email}</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        {userRole === 'superadmin' ? (
+                          <Badge variant="secondary" className="flex items-center gap-1 text-xs">
+                            <Crown className="h-3 w-3" />
+                            Superadmin
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                            <Shield className="h-3 w-3" />
+                            User
+                          </Badge>
+                        )}
+                        {isVerified ? (
+                          <Badge variant="default" className="text-xs">Verified</Badge>
+                        ) : userRole !== 'superadmin' ? (
+                          <Badge variant="destructive" className="text-xs">Unverified</Badge>
+                        ) : null}
+                      </div>
+                    </div>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut} className="text-red-500 cursor-pointer">

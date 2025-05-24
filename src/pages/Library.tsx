@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { 
   Book, 
   Trash2, 
@@ -15,7 +16,9 @@ import {
   RefreshCcw, 
   Globe, 
   Lock, 
-  Loader2 
+  Loader2,
+  Crown,
+  Shield
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
@@ -30,10 +33,11 @@ type Book = {
   cover_url: string | null;
   chunks_count: number;
   ready_chunks_count: number;
+  user_id: string;
 };
 
 const Library = () => {
-  const { user } = useAuth();
+  const { user, userRole, isVerified } = useAuth();
   const navigate = useNavigate();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,20 +72,26 @@ const Library = () => {
 
   const fetchBooks = async () => {
     try {
-      // Get books with chunk counts
-      const { data, error } = await supabase
+      let query = supabase
         .from('books')
         .select(`
           *,
           chunks:chunks(count),
           ready_chunks:chunks(count)
-        `)
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
+        `);
+
+      // If superadmin, show all books, otherwise only user's books
+      if (userRole !== 'superadmin') {
+        query = query.eq('user_id', user?.id);
+      }
+      
+      query = query.order('created_at', { ascending: false });
+      
+      const { data, error } = await query;
         
       if (error) throw error;
       
-      // Fix: Process chunks data correctly by accessing the first element of the array
+      // Process chunks data correctly
       const booksWithCounts = data.map(book => {
         const chunksCount = book.chunks && book.chunks.length > 0 ? book.chunks[0].count : 0;
         const readyChunksCount = book.ready_chunks ? 
@@ -98,7 +108,7 @@ const Library = () => {
     } catch (error) {
       toast({
         title: "Error fetching books",
-        description: error instanceof Error ? error.message : "Failed to load your books",
+        description: error instanceof Error ? error.message : "Failed to load books",
         variant: "destructive"
       });
     } finally {
@@ -106,7 +116,20 @@ const Library = () => {
     }
   };
 
+  const canModifyBook = (book: Book) => {
+    return userRole === 'superadmin' || book.user_id === user?.id;
+  };
+
   const togglePublic = async (book: Book) => {
+    if (!canModifyBook(book)) {
+      toast({
+        title: "Permission denied",
+        description: "You can only modify your own books",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setUpdating(book.id);
     try {
       const { error } = await supabase
@@ -135,7 +158,16 @@ const Library = () => {
     }
   };
 
-  const deleteBook = async (bookId: string) => {
+  const deleteBook = async (bookId: string, book: Book) => {
+    if (!canModifyBook(book)) {
+      toast({
+        title: "Permission denied",
+        description: "You can only delete your own books",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setDeleting(bookId);
     try {
       // Delete book will cascade to chunks due to database constraints
@@ -198,6 +230,31 @@ const Library = () => {
     navigate(`/book/${bookId}`);
   };
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="container mx-auto py-10 text-center">
+          <h1 className="text-2xl font-bold mb-4">Please log in to view your library</h1>
+          <Button onClick={() => navigate("/auth")}>Go to Login</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isVerified && userRole !== 'superadmin') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="container mx-auto py-10 text-center">
+          <h1 className="text-2xl font-bold mb-4">Email verification required</h1>
+          <p className="mb-4">Please verify your email address to access your library.</p>
+          <Button onClick={() => navigate("/auth")}>Verify Email</Button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -214,7 +271,17 @@ const Library = () => {
       <Navbar />
       <div className="container mx-auto py-10 px-4">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">My Library</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">
+              {userRole === 'superadmin' ? 'All Books' : 'My Library'}
+            </h1>
+            {userRole === 'superadmin' && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Crown className="h-3 w-3" />
+                Superadmin
+              </Badge>
+            )}
+          </div>
           <Button onClick={() => navigate("/upload")}>Upload New Book</Button>
         </div>
 
@@ -223,8 +290,12 @@ const Library = () => {
             <CardContent>
               <div className="flex flex-col items-center justify-center space-y-4">
                 <Book className="h-16 w-16 text-gray-400" />
-                <h2 className="text-2xl font-semibold text-gray-700">Your library is empty</h2>
-                <p className="text-gray-500">Upload your first book to get started</p>
+                <h2 className="text-2xl font-semibold text-gray-700">
+                  {userRole === 'superadmin' ? 'No books found' : 'Your library is empty'}
+                </h2>
+                <p className="text-gray-500">
+                  {userRole === 'superadmin' ? 'No books have been uploaded yet' : 'Upload your first book to get started'}
+                </p>
                 <Button onClick={() => navigate("/upload")}>Upload Book</Button>
               </div>
             </CardContent>
@@ -243,8 +314,10 @@ const Library = () => {
                 <BookCard 
                   key={book.id}
                   book={book}
+                  canModify={canModifyBook(book)}
+                  userRole={userRole}
                   onTogglePublic={() => togglePublic(book)}
-                  onDelete={() => deleteBook(book.id)}
+                  onDelete={() => deleteBook(book.id, book)}
                   onRegenerate={() => regenerateAudio(book.id)}
                   onPlay={() => playBook(book.id)}
                   isDeleting={deleting === book.id}
@@ -259,8 +332,10 @@ const Library = () => {
                 <BookCard 
                   key={book.id}
                   book={book}
+                  canModify={canModifyBook(book)}
+                  userRole={userRole}
                   onTogglePublic={() => togglePublic(book)}
-                  onDelete={() => deleteBook(book.id)}
+                  onDelete={() => deleteBook(book.id, book)}
                   onRegenerate={() => regenerateAudio(book.id)}
                   onPlay={() => playBook(book.id)}
                   isDeleting={deleting === book.id}
@@ -275,8 +350,10 @@ const Library = () => {
                 <BookCard 
                   key={book.id}
                   book={book}
+                  canModify={canModifyBook(book)}
+                  userRole={userRole}
                   onTogglePublic={() => togglePublic(book)}
-                  onDelete={() => deleteBook(book.id)}
+                  onDelete={() => deleteBook(book.id, book)}
                   onRegenerate={() => regenerateAudio(book.id)}
                   onPlay={() => playBook(book.id)}
                   isDeleting={deleting === book.id}
@@ -291,8 +368,10 @@ const Library = () => {
                 <BookCard 
                   key={book.id}
                   book={book}
+                  canModify={canModifyBook(book)}
+                  userRole={userRole}
                   onTogglePublic={() => togglePublic(book)}
-                  onDelete={() => deleteBook(book.id)}
+                  onDelete={() => deleteBook(book.id, book)}
                   onRegenerate={() => regenerateAudio(book.id)}
                   onPlay={() => playBook(book.id)}
                   isDeleting={deleting === book.id}
@@ -310,6 +389,8 @@ const Library = () => {
 
 type BookCardProps = {
   book: Book;
+  canModify: boolean;
+  userRole: string | null;
   onTogglePublic: () => void;
   onDelete: () => void;
   onRegenerate: () => void;
@@ -321,6 +402,8 @@ type BookCardProps = {
 
 const BookCard = ({ 
   book, 
+  canModify,
+  userRole,
   onTogglePublic, 
   onDelete, 
   onRegenerate,
@@ -338,9 +421,24 @@ const BookCard = ({
     <Card>
       <CardHeader>
         <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="break-words">{book.title}</CardTitle>
-            <CardDescription>{book.author}</CardDescription>
+          <div className="flex items-start gap-3">
+            {book.cover_url && (
+              <img 
+                src={book.cover_url} 
+                alt={`${book.title} cover`}
+                className="w-16 h-20 object-cover rounded border"
+              />
+            )}
+            <div>
+              <CardTitle className="break-words">{book.title}</CardTitle>
+              <CardDescription>{book.author}</CardDescription>
+              {userRole === 'superadmin' && (
+                <div className="flex items-center gap-1 mt-1">
+                  <Shield className="h-3 w-3 text-blue-500" />
+                  <span className="text-xs text-blue-600">Admin View</span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center space-x-1">
             {book.is_public ? (
@@ -385,41 +483,47 @@ const BookCard = ({
           </div>
         )}
         
-        <div className="flex items-center space-x-2">
-          <Switch
-            checked={book.is_public}
-            onCheckedChange={onTogglePublic}
-            disabled={isUpdating}
-          />
-          <span className="text-sm">Make public</span>
-        </div>
+        {canModify && (
+          <div className="flex items-center space-x-2">
+            <Switch
+              checked={book.is_public}
+              onCheckedChange={onTogglePublic}
+              disabled={isUpdating}
+            />
+            <span className="text-sm">Make public</span>
+          </div>
+        )}
       </CardContent>
       <CardFooter className="flex justify-between">
         <div className="space-x-2">
-          <Button 
-            variant="destructive" 
-            size="sm"
-            onClick={onDelete}
-            disabled={isDeleting}
-          >
-            {isDeleting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={onRegenerate}
-            disabled={isRegenerating}
-          >
-            {isRegenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCcw className="h-4 w-4" />
-            )}
-          </Button>
+          {canModify && (
+            <>
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={onDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={onRegenerate}
+                disabled={isRegenerating}
+              >
+                {isRegenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-4 w-4" />
+                )}
+              </Button>
+            </>
+          )}
         </div>
         <Button 
           onClick={onPlay}

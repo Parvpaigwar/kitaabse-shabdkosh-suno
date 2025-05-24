@@ -1,9 +1,7 @@
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -24,8 +22,8 @@ interface OTPVerificationProps {
 const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,54 +39,80 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
 
     setLoading(true);
     
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: "email",
-    });
-    
-    setLoading(false);
-    
-    if (error) {
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: "email",
+      });
+      
+      if (error) {
+        console.error('OTP verification error:', error);
+        toast({
+          title: "Verification failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      toast({
+        title: "Email verified successfully",
+        description: "Welcome to KitaabSe! You can now access all features.",
+      });
+      
+      onSuccess();
+    } catch (error) {
+      console.error('OTP verification error:', error);
       toast({
         title: "Verification failed",
-        description: error.message,
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setLoading(false);
     }
-    
-    toast({
-      title: "Email verified successfully",
-      description: "You can now log in to your account.",
-    });
-    
-    onSuccess();
   };
 
   const handleResendOTP = async () => {
-    setLoading(true);
+    setResending(true);
     
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email,
-    });
-    
-    setLoading(false);
-    
-    if (error) {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`,
+        }
+      });
+      
+      if (error) {
+        console.error('Resend OTP error:', error);
+        toast({
+          title: "Failed to resend verification code",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      
       toast({
-        title: "Failed to resend OTP",
-        description: error.message,
+        title: "Verification code sent",
+        description: "A new verification code has been sent to your email.",
+      });
+      
+      // Clear the OTP input
+      setOtp("");
+    } catch (error) {
+      console.error('Resend OTP error:', error);
+      toast({
+        title: "Failed to resend verification code",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setResending(false);
     }
-    
-    toast({
-      title: "OTP resent",
-      description: "A new verification code has been sent to your email.",
-    });
   };
 
   return (
@@ -116,10 +140,14 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
               </InputOTPGroup>
             </InputOTP>
           </div>
+          
+          <div className="text-center text-xs text-muted-foreground">
+            Didn't receive the code? Check your spam folder or try resending.
+          </div>
         </CardContent>
         
         <CardFooter className="flex-col space-y-3">
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || otp.length !== 6}>
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...
@@ -134,6 +162,7 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
               type="button"
               onClick={onBack} 
               className="text-muted-foreground hover:text-primary"
+              disabled={loading || resending}
             >
               Back to login
             </button>
@@ -142,9 +171,16 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
               type="button"
               onClick={handleResendOTP} 
               className="text-primary hover:underline" 
-              disabled={loading}
+              disabled={loading || resending}
             >
-              Resend code
+              {resending ? (
+                <>
+                  <Loader2 className="inline h-3 w-3 animate-spin mr-1" />
+                  Sending...
+                </>
+              ) : (
+                "Resend code"
+              )}
             </button>
           </div>
         </CardFooter>
