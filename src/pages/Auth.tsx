@@ -1,7 +1,8 @@
 
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { signup, login } from "@/services/authService";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,15 +16,17 @@ import UpdatePassword from "@/components/UpdatePassword";
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [authView, setAuthView] = useState<"login" | "signup" | "otp" | "reset" | "update-password">(
-    searchParams.get("tab") === "signup" ? "signup" : 
+    searchParams.get("tab") === "signup" ? "signup" :
     searchParams.get("tab") === "update-password" ? "update-password" : "login"
   );
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { setUser, setSession } = useAuth();
 
   // Reset inputs when switching auth view
   useEffect(() => {
@@ -31,6 +34,7 @@ const Auth = () => {
       setPassword("");
       if (authView !== "reset") {
         setEmail("");
+        setName("");
       }
     }
   }, [authView]);
@@ -38,84 +42,77 @@ const Auth = () => {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
 
-    setLoading(false);
-    
-    if (error) {
+    try {
+      const response = await login({ email, password });
+
+      if (response.status === 'PASS') {
+        // Update auth context
+        setUser(response.data.user);
+        setSession(response.data.tokens);
+
+        toast({
+          title: "Login successful",
+          description: "Welcome back to KitaabSe!",
+        });
+
+        navigate("/");
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.message || "Login failed";
+
       // Check if the error is due to email not being confirmed
-      if (error.message.includes("Email not confirmed")) {
+      if (errorMessage.includes("verify") || errorMessage.includes("verification")) {
         toast({
           title: "Email not verified",
           description: "Please verify your email before logging in.",
           variant: "destructive",
         });
-        
+
         // Switch to OTP verification view
         setAuthView("otp");
         return;
       }
-      
+
       toast({
         title: "Login failed",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
-      return;
+    } finally {
+      setLoading(false);
     }
-    
-    toast({
-      title: "Login successful",
-      description: "Welcome back to KitaabSe!",
-    });
-    
-    navigate("/");
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth`,
-      }
-    });
 
-    setLoading(false);
-    
-    if (error) {
+    try {
+      const response = await signup({ name, email });
+
+      if (response.status === 'PASS') {
+        toast({
+          title: "Signup successful",
+          description: "Please check your email for a verification code.",
+        });
+        setAuthView("otp");
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.message || "Signup failed";
+
       toast({
         title: "Signup failed",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
-      return;
+    } finally {
+      setLoading(false);
     }
-    
-    // If email confirmation is required, show OTP view
-    if (data?.user && !data.user.email_confirmed_at) {
-      toast({
-        title: "Verification required",
-        description: "Please check your email for a verification code.",
-      });
-      setAuthView("otp");
-      return;
-    }
-    
-    toast({
-      title: "Signup successful",
-      description: "Welcome to KitaabSe! You can now log in.",
-    });
-    
-    // Switch to login view
-    setAuthView("login");
   };
 
   // Render different views based on authView state
@@ -196,24 +193,27 @@ const Auth = () => {
               <form onSubmit={handleSignUp}>
                 <CardContent className="space-y-4 mt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="name">Name</Label>
                     <Input
-                      id="email"
+                      id="name"
+                      type="text"
+                      placeholder="Your full name"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      minLength={2}
+                      maxLength={100}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email">Email</Label>
+                    <Input
+                      id="signup-email"
                       type="email"
                       placeholder="your.email@example.com"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
                     />
                   </div>
                 </CardContent>

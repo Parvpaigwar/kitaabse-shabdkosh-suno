@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { verifyOTP } from "@/services/authService";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +27,7 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (otp.length !== 6) {
       toast({
         title: "Invalid OTP",
@@ -38,35 +38,27 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
     }
 
     setLoading(true);
-    
+
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
-        type: "email",
-      });
-      
-      if (error) {
-        console.error('OTP verification error:', error);
+      const response = await verifyOTP({ email, otp });
+
+      if (response.status === 'PASS') {
         toast({
-          title: "Verification failed",
-          description: error.message,
-          variant: "destructive",
+          title: "Email verified successfully",
+          description: "Welcome to KitaabSe! You can now log in.",
         });
-        return;
+
+        onSuccess();
+      } else {
+        throw new Error(response.message);
       }
-      
-      toast({
-        title: "Email verified successfully",
-        description: "Welcome to KitaabSe! You can now access all features.",
-      });
-      
-      onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('OTP verification error:', error);
+      const errorMessage = error.response?.data?.message || error.message || "Verification failed";
+
       toast({
         title: "Verification failed",
-        description: "An unexpected error occurred. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -76,34 +68,18 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
 
   const handleResendOTP = async () => {
     setResending(true);
-    
+
     try {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth`,
-        }
-      });
-      
-      if (error) {
-        console.error('Resend OTP error:', error);
-        toast({
-          title: "Failed to resend verification code",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
-      }
-      
+      // Note: The API documentation doesn't show a resend OTP endpoint
+      // You may need to call the signup endpoint again or implement a separate resend endpoint
       toast({
-        title: "Verification code sent",
-        description: "A new verification code has been sent to your email.",
+        title: "Resend feature",
+        description: "Please contact support to resend your verification code.",
       });
-      
+
       // Clear the OTP input
       setOtp("");
-    } catch (error) {
+    } catch (error: any) {
       console.error('Resend OTP error:', error);
       toast({
         title: "Failed to resend verification code",

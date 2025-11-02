@@ -1,95 +1,39 @@
 
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { getAllBooks } from "@/services/bookService";
+import { Book as APIBook } from "@/services/bookService";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Loader2, ThumbsUp, Clock } from "lucide-react";
 import BookCard from "./BookCard";
 
-type Book = {
-  id: string;
-  title: string;
-  author: string;
-  description: string | null;
-  language: string;
-  cover_url: string | null;
-  likes_count: number;
-};
-
 const FeaturedBooks = () => {
-  const [books, setBooks] = useState<Book[]>([]);
+  const [books, setBooks] = useState<APIBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
-  const [sort, setSort] = useState<string>("likes");
+  const [sort, setSort] = useState<string>("popular");
 
   useEffect(() => {
     fetchBooks(filter, sort);
-
-    // Set up real-time subscription for likes
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'likes' },
-        () => {
-          fetchBooks(filter, sort); // Refresh when likes change
-        }
-      )
-      .subscribe();
-      
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [filter, sort]);
 
   const fetchBooks = async (filterValue: string, sortValue: string) => {
     setLoading(true);
-    
+
     try {
-      let query = supabase
-        .from('books')
-        .select(`
-          *,
-          likes(count)
-        `)
-        .eq('is_public', true);
-        
-      // Apply language filter
-      if (filterValue !== "all") {
-        query = query.eq('language', filterValue);
-      }
-      
-      // Apply sorting
-      if (sortValue === "likes") {
-        // Fix: Apply proper sorting method without directly accessing count
-        query = query.order('id', { ascending: false });
-      } else {
-        query = query.order('created_at', { ascending: false });
-      }
-      
-      const { data, error } = await query;
-      
-      if (error) throw error;
-      
-      // Fix: Process likes data correctly by accessing the first element of the array
-      const booksWithLikes = data.map(book => {
-        // Each book has a 'likes' array from the join, which contains a single object with a count property
-        const likesCount = book.likes && book.likes.length > 0 ? book.likes[0].count : 0;
-        
-        return {
-          ...book,
-          likes_count: likesCount
-        };
+      const response = await getAllBooks({
+        language: filterValue !== "all" ? filterValue : undefined,
+        sort_by: sortValue as 'recent' | 'popular' | 'title' | 'author',
+        page_size: 20,
       });
-      
-      // If sorting by likes, sort the processed data in memory
-      if (sortValue === "likes") {
-        booksWithLikes.sort((a, b) => b.likes_count - a.likes_count);
+
+      if (response.status === 'PASS') {
+        setBooks(response.data.results);
+      } else {
+        throw new Error(response.message);
       }
-      
-      setBooks(booksWithLikes);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching books:", error);
     } finally {
       setLoading(false);
@@ -122,9 +66,9 @@ const FeaturedBooks = () => {
             </TabsList>
           </Tabs>
           
-          <Tabs defaultValue="likes" onValueChange={handleSortChange}>
+          <Tabs defaultValue="popular" onValueChange={handleSortChange}>
             <TabsList>
-              <TabsTrigger value="likes" className="flex items-center">
+              <TabsTrigger value="popular" className="flex items-center">
                 <ThumbsUp className="h-4 w-4 mr-2" /> Popular
               </TabsTrigger>
               <TabsTrigger value="recent" className="flex items-center">
@@ -145,10 +89,10 @@ const FeaturedBooks = () => {
             <Link to={`/book/${book.id}`} key={book.id}>
               <BookCard
                 title={book.title}
-                author={book.author}
-                coverImage={book.cover_url || undefined}
+                author={book.author || "Unknown Author"}
+                coverImage={book.cover_image || undefined}
                 language={book.language}
-                likes={book.likes_count}
+                likes={book.favorite_count || 0}
               />
             </Link>
           ))}
