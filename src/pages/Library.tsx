@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getMyBooks } from "@/services/bookService";
+import { Book } from "@/services/bookService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/use-toast";
@@ -9,106 +10,51 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Book, 
-  Trash2, 
-  Play, 
-  RefreshCcw, 
-  Globe, 
-  Lock, 
+import { Progress } from "@/components/ui/progress";
+import {
+  BookOpen,
+  Trash2,
+  Play,
+  RefreshCcw,
+  Globe,
+  Lock,
   Loader2,
   Crown,
-  Shield
+  Shield,
+  Clock
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-
-type Book = {
-  id: string;
-  title: string;
-  author: string;
-  description: string | null;
-  language: string;
-  is_public: boolean;
-  created_at: string;
-  cover_url: string | null;
-  chunks_count: number;
-  ready_chunks_count: number;
-  user_id: string;
-};
 
 const Library = () => {
   const { user, userRole, isVerified } = useAuth();
   const navigate = useNavigate();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'public' | 'private' | 'processing'>('all');
 
   useEffect(() => {
     if (!user) {
       navigate("/auth");
       return;
     }
-    
+
     fetchBooks();
-    
-    // Set up real-time subscription for chunk status updates
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'chunks' },
-        () => {
-          fetchBooks(); // Refresh books when chunks are updated
-        }
-      )
-      .subscribe();
-      
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [user, navigate]);
 
   const fetchBooks = async () => {
     try {
-      let query = supabase
-        .from('books')
-        .select(`
-          *,
-          chunks:chunks(count),
-          ready_chunks:chunks(count)
-        `);
+      setLoading(true);
+      const response = await getMyBooks();
 
-      // If superadmin, show all books, otherwise only user's books
-      if (userRole !== 'superadmin') {
-        query = query.eq('user_id', user?.id);
+      if (response.status === 'PASS') {
+        setBooks(response.data.results);
+      } else {
+        throw new Error(response.message);
       }
-      
-      query = query.order('created_at', { ascending: false });
-      
-      const { data, error } = await query;
-        
-      if (error) throw error;
-      
-      // Process chunks data correctly
-      const booksWithCounts = data.map(book => {
-        const chunksCount = book.chunks && book.chunks.length > 0 ? book.chunks[0].count : 0;
-        const readyChunksCount = book.ready_chunks ? 
-          book.ready_chunks.filter((chunk: any) => chunk.status === 'completed').length : 0;
-        
-        return {
-          ...book,
-          chunks_count: chunksCount,
-          ready_chunks_count: readyChunksCount
-        };
-      });
-      
-      setBooks(booksWithCounts);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error fetching books",
-        description: error instanceof Error ? error.message : "Failed to load books",
+        description: error.response?.data?.message || error.message || "Failed to load books",
         variant: "destructive"
       });
     } finally {
@@ -116,119 +62,32 @@ const Library = () => {
     }
   };
 
-  const canModifyBook = (book: Book) => {
-    return userRole === 'superadmin' || book.user_id === user?.id;
-  };
-
-  const togglePublic = async (book: Book) => {
-    if (!canModifyBook(book)) {
-      toast({
-        title: "Permission denied",
-        description: "You can only modify your own books",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setUpdating(book.id);
-    try {
-      const { error } = await supabase
-        .from('books')
-        .update({ is_public: !book.is_public })
-        .eq('id', book.id);
-        
-      if (error) throw error;
-      
-      setBooks(books.map(b => 
-        b.id === book.id ? { ...b, is_public: !book.is_public } : b
-      ));
-      
-      toast({
-        title: `Book is now ${!book.is_public ? 'public' : 'private'}`,
-        description: `"${book.title}" visibility has been updated.`
-      });
-    } catch (error) {
-      toast({
-        title: "Update failed",
-        description: error instanceof Error ? error.message : "Failed to update book visibility",
-        variant: "destructive"
-      });
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  const deleteBook = async (bookId: string, book: Book) => {
-    if (!canModifyBook(book)) {
-      toast({
-        title: "Permission denied",
-        description: "You can only delete your own books",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setDeleting(bookId);
-    try {
-      // Delete book will cascade to chunks due to database constraints
-      const { error } = await supabase
-        .from('books')
-        .delete()
-        .eq('id', bookId);
-        
-      if (error) throw error;
-      
-      setBooks(books.filter(b => b.id !== bookId));
-      
-      toast({
-        title: "Book deleted",
-        description: "The book and all associated audio files have been removed."
-      });
-    } catch (error) {
-      toast({
-        title: "Delete failed",
-        description: error instanceof Error ? error.message : "Failed to delete book",
-        variant: "destructive"
-      });
-    } finally {
-      setDeleting(null);
-    }
-  };
-
-  const regenerateAudio = async (bookId: string) => {
-    setRegenerating(bookId);
-    try {
-      const response = await fetch("/api/regenerate-audio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ bookId })
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to regenerate audio");
-      }
-      
-      toast({
-        title: "Audio regeneration started",
-        description: "The audio for this book is being regenerated. This may take a few minutes."
-      });
-    } catch (error) {
-      toast({
-        title: "Regeneration failed",
-        description: error instanceof Error ? error.message : "Failed to regenerate audio",
-        variant: "destructive"
-      });
-    } finally {
-      setRegenerating(null);
-    }
-  };
-
-  const playBook = (bookId: string) => {
+  const playBook = (bookId: number) => {
     navigate(`/book/${bookId}`);
   };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <Badge className="bg-green-500">Ready</Badge>;
+      case 'processing':
+        return <Badge className="bg-blue-500 animate-pulse">Processing</Badge>;
+      case 'uploaded':
+        return <Badge className="bg-yellow-500">Queued</Badge>;
+      case 'failed':
+        return <Badge variant="destructive">Failed</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
+  const filteredBooks = books.filter(book => {
+    if (filter === 'all') return true;
+    if (filter === 'public') return book.is_public;
+    if (filter === 'private') return !book.is_public;
+    if (filter === 'processing') return book.processing_status !== 'completed';
+    return true;
+  });
 
   if (!user) {
     return (
@@ -272,9 +131,7 @@ const Library = () => {
       <div className="container mx-auto py-10 px-4">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">
-              {userRole === 'superadmin' ? 'All Books' : 'My Library'}
-            </h1>
+            <h1 className="text-3xl font-bold">My Library</h1>
             {userRole === 'superadmin' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <Crown className="h-3 w-3" />
@@ -285,255 +142,132 @@ const Library = () => {
           <Button onClick={() => navigate("/upload")}>Upload New Book</Button>
         </div>
 
-        {books.length === 0 ? (
+        {/* Filter Tabs */}
+        <Tabs value={filter} onValueChange={(value: string) => setFilter(value as any)} className="mb-6">
+          <TabsList className="grid w-full max-w-md grid-cols-4">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="public">Public</TabsTrigger>
+            <TabsTrigger value="private">Private</TabsTrigger>
+            <TabsTrigger value="processing">Processing</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {filteredBooks.length === 0 ? (
           <Card className="text-center py-16">
             <CardContent>
               <div className="flex flex-col items-center justify-center space-y-4">
-                <Book className="h-16 w-16 text-gray-400" />
+                <BookOpen className="h-16 w-16 text-gray-400" />
                 <h2 className="text-2xl font-semibold text-gray-700">
-                  {userRole === 'superadmin' ? 'No books found' : 'Your library is empty'}
+                  {filter === 'all' ? 'Your library is empty' : `No ${filter} books found`}
                 </h2>
                 <p className="text-gray-500">
-                  {userRole === 'superadmin' ? 'No books have been uploaded yet' : 'Upload your first book to get started'}
+                  {filter === 'all' ? 'Upload your first book to get started' : `You don't have any ${filter} books yet`}
                 </p>
                 <Button onClick={() => navigate("/upload")}>Upload Book</Button>
               </div>
             </CardContent>
           </Card>
         ) : (
-          <Tabs defaultValue="all">
-            <TabsList className="mb-6">
-              <TabsTrigger value="all">All Books</TabsTrigger>
-              <TabsTrigger value="public">Public Books</TabsTrigger>
-              <TabsTrigger value="private">Private Books</TabsTrigger>
-              <TabsTrigger value="processing">Processing Books</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="all" className="grid gap-6 md:grid-cols-2">
-              {books.map(book => (
-                <BookCard 
-                  key={book.id}
-                  book={book}
-                  canModify={canModifyBook(book)}
-                  userRole={userRole}
-                  onTogglePublic={() => togglePublic(book)}
-                  onDelete={() => deleteBook(book.id, book)}
-                  onRegenerate={() => regenerateAudio(book.id)}
-                  onPlay={() => playBook(book.id)}
-                  isDeleting={deleting === book.id}
-                  isUpdating={updating === book.id}
-                  isRegenerating={regenerating === book.id}
-                />
-              ))}
-            </TabsContent>
-            
-            <TabsContent value="public" className="grid gap-6 md:grid-cols-2">
-              {books.filter(book => book.is_public).map(book => (
-                <BookCard 
-                  key={book.id}
-                  book={book}
-                  canModify={canModifyBook(book)}
-                  userRole={userRole}
-                  onTogglePublic={() => togglePublic(book)}
-                  onDelete={() => deleteBook(book.id, book)}
-                  onRegenerate={() => regenerateAudio(book.id)}
-                  onPlay={() => playBook(book.id)}
-                  isDeleting={deleting === book.id}
-                  isUpdating={updating === book.id}
-                  isRegenerating={regenerating === book.id}
-                />
-              ))}
-            </TabsContent>
-            
-            <TabsContent value="private" className="grid gap-6 md:grid-cols-2">
-              {books.filter(book => !book.is_public).map(book => (
-                <BookCard 
-                  key={book.id}
-                  book={book}
-                  canModify={canModifyBook(book)}
-                  userRole={userRole}
-                  onTogglePublic={() => togglePublic(book)}
-                  onDelete={() => deleteBook(book.id, book)}
-                  onRegenerate={() => regenerateAudio(book.id)}
-                  onPlay={() => playBook(book.id)}
-                  isDeleting={deleting === book.id}
-                  isUpdating={updating === book.id}
-                  isRegenerating={regenerating === book.id}
-                />
-              ))}
-            </TabsContent>
-            
-            <TabsContent value="processing" className="grid gap-6 md:grid-cols-2">
-              {books.filter(book => book.ready_chunks_count < book.chunks_count).map(book => (
-                <BookCard 
-                  key={book.id}
-                  book={book}
-                  canModify={canModifyBook(book)}
-                  userRole={userRole}
-                  onTogglePublic={() => togglePublic(book)}
-                  onDelete={() => deleteBook(book.id, book)}
-                  onRegenerate={() => regenerateAudio(book.id)}
-                  onPlay={() => playBook(book.id)}
-                  isDeleting={deleting === book.id}
-                  isUpdating={updating === book.id}
-                  isRegenerating={regenerating === book.id}
-                />
-              ))}
-            </TabsContent>
-          </Tabs>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredBooks.map((book) => (
+              <Card key={book.id} className="flex flex-col">
+                <CardHeader>
+                  <div className="flex items-start justify-between mb-2">
+                    <CardTitle className="text-lg line-clamp-2">{book.title}</CardTitle>
+                    {getStatusBadge(book.processing_status)}
+                  </div>
+                  <CardDescription className="line-clamp-1">
+                    by {book.author || 'Unknown Author'}
+                  </CardDescription>
+
+                  {/* Cover Image */}
+                  {book.cover_image && (
+                    <div className="mt-3 w-full h-48 rounded-md overflow-hidden bg-gray-200">
+                      <img
+                        src={book.cover_image}
+                        alt={book.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                </CardHeader>
+
+                <CardContent className="flex-grow space-y-3">
+                  {/* Processing Progress */}
+                  {book.processing_status === 'processing' && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Processing</span>
+                        <span className="font-medium">{book.processing_progress}%</span>
+                      </div>
+                      <Progress value={book.processing_progress} className="h-2" />
+                    </div>
+                  )}
+
+                  {/* Book Details */}
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      {book.language}
+                    </Badge>
+                    {book.genre && (
+                      <Badge variant="outline">{book.genre}</Badge>
+                    )}
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      {book.is_public ? (
+                        <>
+                          <Globe className="h-3 w-3" /> Public
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="h-3 w-3" /> Private
+                        </>
+                      )}
+                    </Badge>
+                  </div>
+
+                  <div className="text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <BookOpen className="h-4 w-4" />
+                      {book.total_pages} pages
+                    </div>
+                    {book.listen_count !== undefined && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Play className="h-4 w-4" />
+                        {book.listen_count} listens
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1 mt-1">
+                      <Clock className="h-4 w-4" />
+                      Uploaded {new Date(book.uploaded_at).toLocaleDateString()}
+                    </div>
+                  </div>
+
+                  {book.processing_error && (
+                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                      Error: {book.processing_error}
+                    </div>
+                  )}
+                </CardContent>
+
+                <Separator />
+
+                <CardFooter className="flex justify-between gap-2 pt-4">
+                  <Button
+                    onClick={() => playBook(book.id)}
+                    disabled={book.processing_status !== 'completed'}
+                    className="flex-1"
+                    variant={book.processing_status === 'completed' ? 'default' : 'secondary'}
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    {book.processing_status === 'completed' ? 'Listen' : 'Processing...'}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
         )}
       </div>
     </div>
-  );
-};
-
-type BookCardProps = {
-  book: Book;
-  canModify: boolean;
-  userRole: string | null;
-  onTogglePublic: () => void;
-  onDelete: () => void;
-  onRegenerate: () => void;
-  onPlay: () => void;
-  isDeleting: boolean;
-  isUpdating: boolean;
-  isRegenerating: boolean;
-};
-
-const BookCard = ({ 
-  book, 
-  canModify,
-  userRole,
-  onTogglePublic, 
-  onDelete, 
-  onRegenerate,
-  onPlay,
-  isDeleting,
-  isUpdating,
-  isRegenerating
-}: BookCardProps) => {
-  const isProcessing = book.ready_chunks_count < book.chunks_count;
-  const progress = book.chunks_count > 0 
-    ? Math.round((book.ready_chunks_count / book.chunks_count) * 100) 
-    : 0;
-    
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex justify-between items-start">
-          <div className="flex items-start gap-3">
-            {book.cover_url && (
-              <img 
-                src={book.cover_url} 
-                alt={`${book.title} cover`}
-                className="w-16 h-20 object-cover rounded border"
-              />
-            )}
-            <div>
-              <CardTitle className="break-words">{book.title}</CardTitle>
-              <CardDescription>{book.author}</CardDescription>
-              {userRole === 'superadmin' && (
-                <div className="flex items-center gap-1 mt-1">
-                  <Shield className="h-3 w-3 text-blue-500" />
-                  <span className="text-xs text-blue-600">Admin View</span>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center space-x-1">
-            {book.is_public ? (
-              <Globe className="h-4 w-4 text-green-500" />
-            ) : (
-              <Lock className="h-4 w-4 text-orange-500" />
-            )}
-            <span className="text-xs text-gray-500">
-              {book.is_public ? 'Public' : 'Private'}
-            </span>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-500">
-            {book.description || "No description provided."}
-          </p>
-        </div>
-        
-        <Separator />
-        
-        <div className="flex items-center justify-between">
-          <span className="text-sm">Language: <span className="capitalize">{book.language}</span></span>
-          <span className="text-xs text-gray-500">
-            {new Date(book.created_at).toLocaleDateString()}
-          </span>
-        </div>
-        
-        {isProcessing && (
-          <div className="space-y-1">
-            <div className="text-sm flex justify-between">
-              <span>Processing audio...</span>
-              <span>{progress}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-amber-600 h-2 rounded-full" 
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-        )}
-        
-        {canModify && (
-          <div className="flex items-center space-x-2">
-            <Switch
-              checked={book.is_public}
-              onCheckedChange={onTogglePublic}
-              disabled={isUpdating}
-            />
-            <span className="text-sm">Make public</span>
-          </div>
-        )}
-      </CardContent>
-      <CardFooter className="flex justify-between">
-        <div className="space-x-2">
-          {canModify && (
-            <>
-              <Button 
-                variant="destructive" 
-                size="sm"
-                onClick={onDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={onRegenerate}
-                disabled={isRegenerating}
-              >
-                {isRegenerating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCcw className="h-4 w-4" />
-                )}
-              </Button>
-            </>
-          )}
-        </div>
-        <Button 
-          onClick={onPlay}
-          disabled={book.ready_chunks_count === 0}
-          size="sm"
-        >
-          <Play className="h-4 w-4 mr-1" /> Listen
-        </Button>
-      </CardFooter>
-    </Card>
   );
 };
 
