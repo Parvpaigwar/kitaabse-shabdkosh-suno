@@ -14,11 +14,12 @@ export interface SignupResponse {
 export interface VerifyOTPRequest {
   email: string;
   otp: string;
+  password: string;
 }
 
 export interface VerifyOTPResponse {
-  email: string;
-  message: string;
+  token: string;
+  user: User;
 }
 
 export interface LoginRequest {
@@ -30,16 +31,11 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  is_verified: boolean;
-  joined_at: string;
 }
 
 export interface LoginResponse {
+  token: string;
   user: User;
-  tokens: {
-    access: string;
-    refresh: string;
-  };
 }
 
 // API Functions
@@ -55,24 +51,32 @@ export const signup = async (data: SignupRequest): Promise<APIResponse<SignupRes
 
 /**
  * Verify OTP
- * Verify the OTP sent to user's email during signup.
+ * Verify the OTP sent to user's email during signup. Upon successful verification, returns token.
  */
 export const verifyOTP = async (data: VerifyOTPRequest): Promise<APIResponse<VerifyOTPResponse>> => {
   const response = await api.post<APIResponse<VerifyOTPResponse>>('/api/users/verify/', data);
+
+  // Store token in localStorage upon successful verification
+  if (response.data.status === 'PASS' && response.data.data.token) {
+    localStorage.setItem('token', response.data.data.token);
+
+    // Store user data
+    localStorage.setItem('user', JSON.stringify(response.data.data.user));
+  }
+
   return response.data;
 };
 
 /**
  * User Login
- * Authenticate user and receive JWT access and refresh tokens.
+ * Authenticate user and receive JWT token.
  */
 export const login = async (data: LoginRequest): Promise<APIResponse<LoginResponse>> => {
   const response = await api.post<APIResponse<LoginResponse>>('/api/users/login/', data);
 
-  // Store tokens in localStorage
-  if (response.data.status === 'PASS' && response.data.data.tokens) {
-    localStorage.setItem('accessToken', response.data.data.tokens.access);
-    localStorage.setItem('refreshToken', response.data.data.tokens.refresh);
+  // Store token in localStorage
+  if (response.data.status === 'PASS' && response.data.data.token) {
+    localStorage.setItem('token', response.data.data.token);
 
     // Store user data
     localStorage.setItem('user', JSON.stringify(response.data.data.user));
@@ -83,11 +87,10 @@ export const login = async (data: LoginRequest): Promise<APIResponse<LoginRespon
 
 /**
  * Logout
- * Clear tokens and user data from localStorage
+ * Clear token and user data from localStorage
  */
 export const logout = (): void => {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('token');
   localStorage.removeItem('user');
 };
 
@@ -111,6 +114,13 @@ export const getCurrentUser = (): User | null => {
  * Check if user is authenticated
  */
 export const isAuthenticated = (): boolean => {
-  const token = localStorage.getItem('accessToken');
+  const token = localStorage.getItem('token');
   return !!token;
+};
+
+/**
+ * Get current auth token
+ */
+export const getToken = (): string | null => {
+  return localStorage.getItem('token');
 };

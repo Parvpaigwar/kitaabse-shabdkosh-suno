@@ -8,13 +8,11 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  is_verified: boolean;
-  joined_at: string;
 }
 
 type AuthContextType = {
   user: User | null;
-  session: { access: string; refresh: string } | null;
+  token: string | null;
   loading: boolean;
   isVerified: boolean;
   userRole: UserRole | null;
@@ -22,14 +20,14 @@ type AuthContextType = {
   signOut: () => Promise<void>;
   refreshUserRole: () => Promise<void>;
   setUser: (user: User | null) => void;
-  setSession: (session: { access: string; refresh: string } | null) => void;
+  setToken: (token: string | null) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<{ access: string; refresh: string } | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
@@ -47,14 +45,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Check for existing session on mount
     const initAuth = () => {
       try {
-        const accessToken = localStorage.getItem('accessToken');
-        const refreshToken = localStorage.getItem('refreshToken');
+        const storedToken = localStorage.getItem('token');
         const storedUser = getCurrentUser();
 
-        if (accessToken && refreshToken && storedUser) {
+        if (storedToken && storedUser) {
           setUser(storedUser);
-          setSession({ access: accessToken, refresh: refreshToken });
-          setIsVerified(storedUser.is_verified);
+          setToken(storedToken);
+          setIsVerified(true); // User is verified if they have a token
           setUserRole('user'); // Default role, can be enhanced based on backend
         }
       } catch (error) {
@@ -72,7 +69,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       authLogout();
       setUser(null);
-      setSession(null);
+      setToken(null);
       setUserRole(null);
       setIsVerified(false);
     } catch (error) {
@@ -82,7 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const value = {
     user,
-    session,
+    token,
     loading,
     isVerified,
     userRole,
@@ -90,7 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     signOut,
     refreshUserRole,
     setUser,
-    setSession,
+    setToken,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

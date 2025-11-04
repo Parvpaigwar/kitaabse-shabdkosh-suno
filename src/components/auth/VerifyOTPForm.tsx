@@ -1,10 +1,9 @@
-
 import { useState } from "react";
 import { verifyOTP } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -15,23 +14,33 @@ import {
   InputOTPSeparator,
 } from "@/components/ui/input-otp";
 
-interface OTPVerificationProps {
+interface VerifyOTPFormProps {
   email: string;
   onSuccess: () => void;
   onBack: () => void;
 }
 
-const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => {
+/**
+ * OTP Verification Form Component
+ *
+ * Handles email verification with OTP and password creation.
+ * API Payload: { email: string, otp: string, password: string }
+ *
+ * Returns JWT tokens and user data upon successful verification.
+ * The user is automatically logged in after verification.
+ */
+export const VerifyOTPForm = ({ email, onSuccess, onBack }: VerifyOTPFormProps) => {
   const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
   const { toast } = useToast();
   const { setUser, setToken } = useAuth();
 
-  const handleVerify = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validation
     if (otp.length !== 6) {
       toast({
         title: "Invalid OTP",
@@ -45,6 +54,15 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
       toast({
         title: "Invalid Password",
         description: "Password must be at least 6 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast({
+        title: "Passwords don't match",
+        description: "Please make sure both passwords are the same.",
         variant: "destructive",
       });
       return;
@@ -83,40 +101,18 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
     }
   };
 
-  const handleResendOTP = async () => {
-    setResending(true);
-
-    try {
-      // Note: The API documentation doesn't show a resend OTP endpoint
-      // You may need to call the signup endpoint again or implement a separate resend endpoint
-      toast({
-        title: "Resend feature",
-        description: "Please contact support to resend your verification code.",
-      });
-
-      // Clear the OTP input
-      setOtp("");
-    } catch (error: any) {
-      console.error('Resend OTP error:', error);
-      toast({
-        title: "Failed to resend verification code",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setResending(false);
-    }
-  };
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl font-semibold text-center">Verify Your Email</CardTitle>
+        <CardTitle className="text-xl font-semibold text-center">
+          Verify Your Email
+        </CardTitle>
       </CardHeader>
-      <form onSubmit={handleVerify}>
+      <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           <div className="text-center text-sm text-muted-foreground mb-4">
-            We've sent a verification code to <span className="font-medium">{email}</span>
+            We've sent a verification code to{" "}
+            <span className="font-medium">{email}</span>
           </div>
 
           <div className="flex flex-col space-y-2 items-center">
@@ -144,16 +140,40 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               minLength={6}
+              disabled={loading}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirm Password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              placeholder="Re-enter your password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              minLength={6}
+              disabled={loading}
             />
           </div>
 
           <div className="text-center text-xs text-muted-foreground">
-            Didn't receive the code? Check your spam folder or try resending.
+            Didn't receive the code? Check your spam folder.
           </div>
         </CardContent>
 
         <CardFooter className="flex-col space-y-3">
-          <Button type="submit" className="w-full" disabled={loading || otp.length !== 6 || password.length < 6}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={
+              loading ||
+              otp.length !== 6 ||
+              password.length < 6 ||
+              password !== confirmPassword
+            }
+          >
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...
@@ -162,37 +182,17 @@ const OTPVerification = ({ email, onSuccess, onBack }: OTPVerificationProps) => 
               "Verify & Create Account"
             )}
           </Button>
-          
-          <div className="flex justify-between w-full text-sm">
-            <button 
-              type="button"
-              onClick={onBack} 
-              className="text-muted-foreground hover:text-primary"
-              disabled={loading || resending}
-            >
-              Back to login
-            </button>
-            
-            <button 
-              type="button"
-              onClick={handleResendOTP} 
-              className="text-primary hover:underline" 
-              disabled={loading || resending}
-            >
-              {resending ? (
-                <>
-                  <Loader2 className="inline h-3 w-3 animate-spin mr-1" />
-                  Sending...
-                </>
-              ) : (
-                "Resend code"
-              )}
-            </button>
-          </div>
+
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-sm text-muted-foreground hover:text-primary"
+            disabled={loading}
+          >
+            Back to login
+          </button>
         </CardFooter>
       </form>
     </Card>
   );
 };
-
-export default OTPVerification;

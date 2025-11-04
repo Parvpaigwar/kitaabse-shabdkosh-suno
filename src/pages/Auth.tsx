@@ -26,7 +26,7 @@ const Auth = () => {
   );
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { setUser, setSession } = useAuth();
+  const { setUser, setToken } = useAuth();
 
   // Reset inputs when switching auth view
   useEffect(() => {
@@ -49,7 +49,7 @@ const Auth = () => {
       if (response.status === 'PASS') {
         // Update auth context
         setUser(response.data.user);
-        setSession(response.data.tokens);
+        setToken(response.data.token);
 
         toast({
           title: "Login successful",
@@ -120,9 +120,9 @@ const Auth = () => {
     switch (authView) {
       case "otp":
         return (
-          <OTPVerification 
-            email={email} 
-            onSuccess={() => setAuthView("login")} 
+          <OTPVerification
+            email={email}
+            onSuccess={() => navigate("/")}
             onBack={() => setAuthView("login")}
           />
         );
