@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Upload } from "lucide-react";
 
 export const BookForm = () => {
-  const { user, isVerified, userRole } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -53,15 +53,6 @@ export const BookForm = () => {
         variant: "destructive",
       });
       navigate("/auth");
-      return;
-    }
-
-    if (!isVerified && userRole !== 'superadmin') {
-      toast({
-        title: "Email verification required",
-        description: "Please verify your email before uploading books",
-        variant: "destructive",
-      });
       return;
     }
 

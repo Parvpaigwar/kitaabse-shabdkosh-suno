@@ -17,21 +17,44 @@ type AuthContextType = {
   isVerified: boolean;
   userRole: UserRole | null;
   isLoading: boolean;
+  showAuthModal: boolean;
+  authModalCloseable: boolean;
   signOut: () => Promise<void>;
   refreshUserRole: () => Promise<void>;
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
+  openAuthModal: (closeable?: boolean) => void;
+  closeAuthModal: () => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
+  const [token, setTokenState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalCloseable, setAuthModalCloseable] = useState(true);
+
+  // Custom setUser that also updates verification status
+  const setUser = (newUser: User | null) => {
+    setUserState(newUser);
+    if (newUser) {
+      setIsVerified(true);
+      setUserRole('user');
+    }
+  };
+
+  // Custom setToken that also stores in localStorage
+  const setToken = (newToken: string | null) => {
+    setTokenState(newToken);
+    if (newToken) {
+      localStorage.setItem('token', newToken);
+    }
+  };
 
   const refreshUserRole = async () => {
     // For Django backend, role could be determined from user data
@@ -63,17 +86,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     initAuth();
+
+    // Listen for 401 auth required events
+    const handleAuthRequired = () => {
+      // Clear auth state
+      setUserState(null);
+      setTokenState(null);
+      setUserRole(null);
+      setIsVerified(false);
+      // Open auth modal (non-closeable)
+      setAuthModalCloseable(false);
+      setShowAuthModal(true);
+    };
+
+    window.addEventListener('auth:required', handleAuthRequired);
+
+    return () => {
+      window.removeEventListener('auth:required', handleAuthRequired);
+    };
   }, []);
 
   const signOut = async () => {
     try {
       authLogout();
-      setUser(null);
-      setToken(null);
+      setUserState(null);
+      setTokenState(null);
       setUserRole(null);
       setIsVerified(false);
     } catch (error) {
       console.error('Error signing out:', error);
+    }
+  };
+
+  const openAuthModal = (closeable: boolean = true) => {
+    setAuthModalCloseable(closeable);
+    setShowAuthModal(true);
+  };
+
+  const closeAuthModal = () => {
+    if (authModalCloseable) {
+      setShowAuthModal(false);
     }
   };
 
@@ -84,10 +136,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     isVerified,
     userRole,
     isLoading,
+    showAuthModal,
+    authModalCloseable,
     signOut,
     refreshUserRole,
     setUser,
     setToken,
+    openAuthModal,
+    closeAuthModal,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

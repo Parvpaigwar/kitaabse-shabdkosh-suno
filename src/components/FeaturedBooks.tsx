@@ -29,7 +29,11 @@ const FeaturedBooks = () => {
       });
 
       if (response.status === 'PASS') {
-        setBooks(response.data.results);
+        // Handle both paginated and non-paginated responses
+        const booksData = Array.isArray(response.data)
+          ? response.data
+          : response.data.results || [];
+        setBooks(booksData);
       } else {
         throw new Error(response.message);
       }

@@ -64,18 +64,6 @@ export const LoginForm = ({
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || error.message || "Login failed";
 
-      // Check if the error is due to email not being verified
-      if (errorMessage.includes("verify") || errorMessage.includes("verification")) {
-        toast({
-          title: "Email not verified",
-          description: "Please verify your email before logging in.",
-          variant: "destructive",
-        });
-
-        onNeedVerification();
-        return;
-      }
-
       toast({
         title: "Login failed",
         description: errorMessage,
