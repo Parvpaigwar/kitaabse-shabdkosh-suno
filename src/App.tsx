@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { GlobalAuthModal } from "./components/GlobalAuthModal";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Upload from "./pages/Upload";
@@ -38,24 +39,25 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <GlobalAuthModal />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
-            <Route 
-              path="/upload" 
+            <Route
+              path="/upload"
               element={
                 <ProtectedRoute>
                   <Upload />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library" 
+            <Route
+              path="/library"
               element={
                 <ProtectedRoute>
                   <Library />
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route path="/book/:id" element={<BookPlayer />} />
             <Route path="*" element={<NotFound />} />

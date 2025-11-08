@@ -37,10 +37,13 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // Clear token and redirect to login
+      // Clear token and user data
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/auth';
+
+      // Dispatch custom event to trigger auth modal
+      const event = new CustomEvent('auth:required');
+      window.dispatchEvent(event);
     }
 
     return Promise.reject(error);

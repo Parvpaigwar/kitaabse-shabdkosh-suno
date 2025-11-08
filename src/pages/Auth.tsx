@@ -63,19 +63,6 @@ const Auth = () => {
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || error.message || "Login failed";
 
-      // Check if the error is due to email not being confirmed
-      if (errorMessage.includes("verify") || errorMessage.includes("verification")) {
-        toast({
-          title: "Email not verified",
-          description: "Please verify your email before logging in.",
-          variant: "destructive",
-        });
-
-        // Switch to OTP verification view
-        setAuthView("otp");
-        return;
-      }
-
       toast({
         title: "Login failed",
         description: errorMessage,

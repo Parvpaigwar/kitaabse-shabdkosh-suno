@@ -2,8 +2,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { BookOpen, Upload, Library, User, LogOut, Mail, Crown, Shield } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { BookOpen, Upload, Library, User, LogOut, Crown, Shield } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
 const Navbar = () => {
-  const { user, signOut, isVerified, userRole } = useAuth();
+  const { user, signOut, userRole } = useAuth();
   const { toast } = useToast();
 
   const handleSignOut = async () => {
@@ -24,40 +23,6 @@ const Navbar = () => {
       title: "Signed out successfully",
       description: "You have been logged out of KitaabSe.",
     });
-  };
-
-  const handleResendVerification = async () => {
-    if (!user?.email) return;
-    
-    try {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email: user.email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth`,
-        }
-      });
-      
-      if (error) {
-        toast({
-          title: "Failed to resend verification",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      toast({
-        title: "Verification email sent",
-        description: "Please check your email for a verification code.",
-      });
-    } catch (error) {
-      toast({
-        title: "Failed to resend verification",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
-    }
   };
 
   return (
@@ -70,17 +35,6 @@ const Navbar = () => {
         <nav className="flex items-center space-x-4">
           {user ? (
             <>
-              {!isVerified && userRole !== 'superadmin' && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex items-center gap-2 border-amber-500 text-amber-600"
-                  onClick={handleResendVerification}
-                >
-                  <Mail className="h-4 w-4" /> Verify Email
-                </Button>
-              )}
-              
               <Link to="/upload">
                 <Button variant="ghost" size="sm" className="flex items-center gap-2">
                   <Upload className="h-4 w-4" /> Upload Book
@@ -118,11 +72,6 @@ const Navbar = () => {
                             User
                           </Badge>
                         )}
-                        {isVerified ? (
-                          <Badge variant="default" className="text-xs">Verified</Badge>
-                        ) : userRole !== 'superadmin' ? (
-                          <Badge variant="destructive" className="text-xs">Unverified</Badge>
-                        ) : null}
                       </div>
                     </div>
                   </DropdownMenuItem>

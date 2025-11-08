@@ -26,7 +26,7 @@ import {
 import Navbar from "@/components/Navbar";
 
 const Library = () => {
-  const { user, userRole, isVerified } = useAuth();
+  const { user, userRole } = useAuth();
   const navigate = useNavigate();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +47,11 @@ const Library = () => {
       const response = await getMyBooks();
 
       if (response.status === 'PASS') {
-        setBooks(response.data.results);
+        // Handle both paginated and non-paginated responses
+        const booksData = Array.isArray(response.data)
+          ? response.data
+          : response.data.results || [];
+        setBooks(booksData);
       } else {
         throw new Error(response.message);
       }
@@ -96,19 +100,6 @@ const Library = () => {
         <div className="container mx-auto py-10 text-center">
           <h1 className="text-2xl font-bold mb-4">Please log in to view your library</h1>
           <Button onClick={() => navigate("/auth")}>Go to Login</Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isVerified && userRole !== 'superadmin') {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="container mx-auto py-10 text-center">
-          <h1 className="text-2xl font-bold mb-4">Email verification required</h1>
-          <p className="mb-4">Please verify your email address to access your library.</p>
-          <Button onClick={() => navigate("/auth")}>Verify Email</Button>
         </div>
       </div>
     );
