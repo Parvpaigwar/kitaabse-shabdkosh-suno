@@ -14,19 +14,23 @@ export interface Book {
   description: string | null;
   language: string;
   genre: string | null;
-  pdf_file?: string;
-  cover_image: string | null;
+  pdf_url?: string;
+  cover_url?: string | null;
+  cover_image?: string | null;
   total_pages: number;
   total_duration?: number;
   processing_status: 'uploaded' | 'processing' | 'completed' | 'failed';
   processing_progress: number;
   processing_error?: string | null;
   is_public: boolean;
+  is_active?: boolean;
   listen_count?: number;
   favorite_count?: number;
   uploader: Uploader;
   uploaded_at: string;
   processed_at?: string | null;
+  modified_at?: string;
+  pages_count?: number;
   user_progress?: UserProgress;
   is_in_library?: boolean;
   is_favorite?: boolean;
@@ -34,19 +38,22 @@ export interface Book {
 
 export interface UserProgress {
   current_page: number;
-  total_pages: number;
-  percentage: number;
   current_position?: number;
-  last_listened: string;
+  completion_percentage: number;
+  total_listened_time: number;
+  is_completed: boolean;
+  last_listened_at: string;
 }
 
 export interface BookPage {
+  id: number;
   page_number: number;
   text_content: string;
-  audio_file: string;
+  audio_url: string | null;
   audio_duration: number;
   processing_status: string;
-  created_at: string;
+  processing_error?: string | null;
+  processed_at?: string | null;
 }
 
 export interface UploadBookRequest {
@@ -75,21 +82,22 @@ export interface GetMyBooksParams {
 }
 
 export interface UpdateProgressRequest {
-  current_page: number;
-  current_position?: number;
+  page_number: number;
+  position?: number;
+  listened_time?: number;
 }
 
 export interface ProgressItem {
-  book: {
-    id: number;
-    title: string;
-    author: string | null;
-    cover_image: string | null;
-  };
+  id: number;
+  book: Book;
   current_page: number;
-  total_pages: number;
-  percentage: number;
-  last_listened: string;
+  current_position: number;
+  total_listened_time: number;
+  is_completed: boolean;
+  completion_percentage: number;
+  started_at: string;
+  last_listened_at: string;
+  completed_at: string | null;
 }
 
 // API Functions
@@ -143,8 +151,8 @@ export const getMyBooks = async (params?: GetMyBooksParams): Promise<APIResponse
  * Get Book Details
  * Get detailed information about a specific book.
  */
-export const getBookDetails = async (bookId: number): Promise<APIResponse<{ book: Book }>> => {
-  const response = await api.get<APIResponse<{ book: Book }>>(`/api/books/${bookId}/`);
+export const getBookDetails = async (bookId: number): Promise<APIResponse<Book>> => {
+  const response = await api.get<APIResponse<Book>>(`/api/books/${bookId}/`);
   return response.data;
 };
 
@@ -155,12 +163,21 @@ export const getBookDetails = async (bookId: number): Promise<APIResponse<{ book
 export const getBookPages = async (
   bookId: number,
   page?: number
-): Promise<APIResponse<{ book: { id: number; title: string; total_pages: number }; pages: BookPage[] }>> => {
+): Promise<APIResponse<{ book: { id: number; title: string; total_pages: number; processing_status: string }; pages: BookPage[] }>> => {
   const params = page ? { page } : undefined;
-  const response = await api.get<APIResponse<{ book: { id: number; title: string; total_pages: number }; pages: BookPage[] }>>(
+  const response = await api.get<APIResponse<{ book: { id: number; title: string; total_pages: number; processing_status: string }; pages: BookPage[] }>>(
     `/api/books/${bookId}/pages/`,
     { params }
   );
+  return response.data;
+};
+
+/**
+ * Get Book Progress
+ * Get user's listening progress for a specific book.
+ */
+export const getBookProgress = async (bookId: number): Promise<APIResponse<UserProgress>> => {
+  const response = await api.get<APIResponse<UserProgress>>(`/api/books/${bookId}/progress/`);
   return response.data;
 };
 
@@ -171,8 +188,8 @@ export const getBookPages = async (
 export const updateProgress = async (
   bookId: number,
   data: UpdateProgressRequest
-): Promise<APIResponse<{ progress: UserProgress }>> => {
-  const response = await api.post<APIResponse<{ progress: UserProgress }>>(`/api/books/${bookId}/progress/`, data);
+): Promise<APIResponse<UserProgress>> => {
+  const response = await api.put<APIResponse<UserProgress>>(`/api/books/${bookId}/progress/`, data);
   return response.data;
 };
 
@@ -180,7 +197,7 @@ export const updateProgress = async (
  * Get My Progress (All Books)
  * Get listening progress for all books the user has started listening to.
  */
-export const getMyProgress = async (): Promise<APIResponse<{ progress: ProgressItem[] }>> => {
-  const response = await api.get<APIResponse<{ progress: ProgressItem[] }>>('/api/books/progress/');
+export const getMyProgress = async (params?: { in_progress?: boolean; completed?: boolean }): Promise<APIResponse<ProgressItem[]>> => {
+  const response = await api.get<APIResponse<ProgressItem[]>>('/api/books/progress/', { params });
   return response.data;
 };

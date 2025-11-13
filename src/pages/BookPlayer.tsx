@@ -1,252 +1,320 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Heart, Share2, ArrowLeft, Play, Pause, SkipForward, SkipBack, Loader2 } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Badge } from "@/components/ui/badge";
+import {
+  Heart,
+  Share2,
+  ArrowLeft,
+  Play,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Loader2,
+  BookmarkPlus,
+  BookmarkCheck,
+  Volume2,
+  VolumeX
+} from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { useAuth } from "@/contexts/AuthContext";
-
-type Book = {
-  id: string;
-  title: string;
-  author: string;
-  description: string | null;
-  language: string;
-  is_public: boolean;
-  cover_url: string | null;
-  likes_count: number;
-  user_has_liked: boolean;
-};
-
-type Chunk = {
-  id: string;
-  chunk_number: number;
-  audio_url: string | null;
-  status: string;
-  text_content: string | null;
-};
+import {
+  getBookDetails,
+  getBookPages,
+  getBookProgress,
+  updateProgress,
+  Book,
+  BookPage,
+  UserProgress
+} from "@/services/bookService";
+import {
+  addToLibrary,
+  removeFromLibrary,
+  toggleFavorite
+} from "@/services/libraryService";
 
 const BookPlayer = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+
+  // Book & Pages State
   const [book, setBook] = useState<Book | null>(null);
-  const [chunks, setChunks] = useState<Chunk[]>([]);
-  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [pages, setPages] = useState<BookPage[]>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [liking, setLiking] = useState(false);
-  const [nextChunksLoading, setNextChunksLoading] = useState(false);
+
+  // Audio State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Progress State
+  const [progress, setProgress] = useState<UserProgress | null>(null);
+  const [savingProgress, setSavingProgress] = useState(false);
+
+  // Library State
+  const [isInLibrary, setIsInLibrary] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+
+  // Fetch book details and pages
   useEffect(() => {
     if (!id) return;
-    
-    const fetchBookAndChunks = async () => {
-      try {
-        // Fetch book details
-        const { data: bookData, error: bookError } = await supabase
-          .from("books")
-          .select(`
-            *,
-            likes(count),
-            user_has_liked:likes!inner(id)
-          `)
-          .eq("id", id)
-          .single();
-          
-        if (bookError) throw bookError;
-        
-        // Fix: Process likes data correctly by accessing the first element of the array
-        const likesCount = bookData.likes && bookData.likes.length > 0 ? bookData.likes[0].count : 0;
-        
-        const bookWithCounts = {
-          ...bookData,
-          likes_count: likesCount,
-          user_has_liked: user ? bookData.user_has_liked.length > 0 : false
-        };
-        
-        setBook(bookWithCounts);
-        
-        // Fetch initial chunks
-        await fetchChunks();
+    fetchBookData();
+  }, [id]);
 
-        // Set up real-time subscription for chunk updates
-        const channel = supabase
-          .channel('schema-db-changes')
-          .on(
-            'postgres_changes',
-            { event: 'UPDATE', schema: 'public', table: 'chunks', filter: `book_id=eq.${id}` },
-            () => {
-              fetchChunks();
-            }
-          )
-          .subscribe();
-          
-        return () => {
-          supabase.removeChannel(channel);
-        };
-        
-      } catch (error) {
-        toast({
-          title: "Error loading book",
-          description: error instanceof Error ? error.message : "Failed to load book details",
-          variant: "destructive"
-        });
-        navigate("/");
-      } finally {
-        setLoading(false);
-      }
+  // Load progress on initial load
+  useEffect(() => {
+    if (book && user) {
+      loadProgress();
+    }
+  }, [book, user]);
+
+  // Setup audio element
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const updateTime = () => setCurrentTime(audio.currentTime);
+    const updateDuration = () => setDuration(audio.duration);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      handleNextPage();
     };
-    
-    fetchBookAndChunks();
-  }, [id, user, navigate]);
-  
-  const fetchChunks = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("chunks")
-        .select("*")
-        .eq("book_id", id)
-        .order("chunk_number", { ascending: true });
-        
-      if (error) throw error;
-      
-      setChunks(data);
-    } catch (error) {
-      toast({
-        title: "Error loading audio",
-        description: error instanceof Error ? error.message : "Failed to load audio chunks",
-        variant: "destructive"
-      });
-    }
-  };
 
-  const toggleLike = async () => {
-    if (!user) {
-      navigate("/auth");
-      return;
-    }
-    
-    setLiking(true);
-    
+    audio.addEventListener('timeupdate', updateTime);
+    audio.addEventListener('loadedmetadata', updateDuration);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('timeupdate', updateTime);
+      audio.removeEventListener('loadedmetadata', updateDuration);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, [currentPageIndex, pages]);
+
+  // Auto-save progress every 10 seconds while playing
+  useEffect(() => {
+    if (!isPlaying || !user || !book) return;
+
+    const interval = setInterval(() => {
+      saveProgress();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, currentPageIndex, currentTime, user, book]);
+
+  const fetchBookData = async () => {
     try {
-      if (book?.user_has_liked) {
-        // Unlike
-        await supabase
-          .from("likes")
-          .delete()
-          .eq("book_id", id)
-          .eq("user_id", user.id);
-          
-        setBook({
-          ...book,
-          likes_count: book.likes_count - 1,
-          user_has_liked: false
-        });
+      setLoading(true);
+
+      // Fetch book details
+      const bookResponse = await getBookDetails(Number(id));
+      if (bookResponse.status === 'PASS') {
+        const bookData = bookResponse.data;
+        setBook(bookData);
+        setIsInLibrary(bookData.is_in_library || false);
+        setIsFavorite(bookData.is_favorite || false);
       } else {
-        // Like
-        await supabase
-          .from("likes")
-          .insert({
-            book_id: id,
-            user_id: user.id
-          });
-          
-        setBook({
-          ...book!,
-          likes_count: book!.likes_count + 1,
-          user_has_liked: true
-        });
+        throw new Error(bookResponse.message);
       }
-    } catch (error) {
+
+      // Fetch book pages
+      const pagesResponse = await getBookPages(Number(id));
+      if (pagesResponse.status === 'PASS') {
+        setPages(pagesResponse.data.pages);
+      } else {
+        throw new Error(pagesResponse.message);
+      }
+    } catch (error: any) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update like status",
+        title: "Error loading book",
+        description: error.response?.data?.message || error.message || "Failed to load book",
         variant: "destructive"
       });
+      navigate("/");
     } finally {
-      setLiking(false);
+      setLoading(false);
     }
   };
 
-  const playPause = () => {
+  const loadProgress = async () => {
+    if (!user || !book) return;
+
+    try {
+      const progressResponse = await getBookProgress(book.id);
+      if (progressResponse.status === 'PASS') {
+        const progressData = progressResponse.data;
+        setProgress(progressData);
+
+        // Set current page based on progress
+        if (progressData.current_page > 1) {
+          const pageIndex = pages.findIndex(p => p.page_number === progressData.current_page);
+          if (pageIndex !== -1) {
+            setCurrentPageIndex(pageIndex);
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error("Error loading progress:", error);
+    }
+  };
+
+  const saveProgress = async () => {
+    if (!user || !book || savingProgress) return;
+
+    const currentPage = pages[currentPageIndex];
+    if (!currentPage) return;
+
+    try {
+      setSavingProgress(true);
+      await updateProgress(book.id, {
+        page_number: currentPage.page_number,
+        position: Math.floor(currentTime),
+        listened_time: 10 // 10 seconds since last save
+      });
+    } catch (error: any) {
+      console.error("Error saving progress:", error);
+    } finally {
+      setSavingProgress(false);
+    }
+  };
+
+  const togglePlayPause = () => {
     if (!audioRef.current) return;
-    
+
     if (isPlaying) {
       audioRef.current.pause();
     } else {
       audioRef.current.play();
     }
-    
+
     setIsPlaying(!isPlaying);
   };
 
-  const nextChunk = () => {
-    if (currentChunkIndex < chunks.length - 1) {
-      setCurrentChunkIndex(currentChunkIndex + 1);
+  const handlePreviousPage = () => {
+    if (currentPageIndex > 0) {
+      saveProgress();
+      setCurrentPageIndex(currentPageIndex - 1);
       setIsPlaying(false);
+      setCurrentTime(0);
     }
   };
 
-  const prevChunk = () => {
-    if (currentChunkIndex > 0) {
-      setCurrentChunkIndex(currentChunkIndex - 1);
+  const handleNextPage = () => {
+    if (currentPageIndex < pages.length - 1) {
+      saveProgress();
+      setCurrentPageIndex(currentPageIndex + 1);
       setIsPlaying(false);
+      setCurrentTime(0);
     }
   };
 
-  const onAudioEnded = () => {
-    // When current audio ends, automatically play next chunk if available
-    if (currentChunkIndex < chunks.length - 1) {
-      nextChunk();
-      // After switching, delay playing to allow audio to load
-      setTimeout(() => {
-        if (audioRef.current) {
-          audioRef.current.play();
-          setIsPlaying(true);
-        }
-      }, 300);
+  const handleSeek = (value: number[]) => {
+    if (!audioRef.current) return;
+    const newTime = value[0];
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleVolumeChange = (value: number[]) => {
+    if (!audioRef.current) return;
+    const newVolume = value[0];
+    audioRef.current.volume = newVolume;
+    setVolume(newVolume);
+    setIsMuted(newVolume === 0);
+  };
+
+  const toggleMute = () => {
+    if (!audioRef.current) return;
+
+    if (isMuted) {
+      audioRef.current.volume = volume || 0.5;
+      setIsMuted(false);
     } else {
-      setIsPlaying(false);
-    }
-    
-    // If we've played some chunks and there are pending ones, try to fetch more
-    if (currentChunkIndex >= chunks.length - 3) {
-      checkForMoreChunks();
+      audioRef.current.volume = 0;
+      setIsMuted(true);
     }
   };
 
-  const checkForMoreChunks = async () => {
-    // Only trigger if not already loading and we have chunks
-    if (nextChunksLoading || chunks.length === 0) return;
-    
-    setNextChunksLoading(true);
-    
+  const handleAddToLibrary = async () => {
+    if (!user) {
+      navigate("/auth");
+      return;
+    }
+
+    if (!book) return;
+
     try {
-      // Tell the API to generate the next chunk if needed
-      await fetch("/api/next-chunk", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          bookId: id,
-          currentChunk: chunks[chunks.length - 1].chunk_number
-        })
+      setLibraryLoading(true);
+
+      if (isInLibrary) {
+        await removeFromLibrary(book.id);
+        setIsInLibrary(false);
+        setIsFavorite(false);
+        toast({
+          title: "Removed from library",
+          description: "Book removed from your library"
+        });
+      } else {
+        await addToLibrary({ book_id: book.id });
+        setIsInLibrary(true);
+        toast({
+          title: "Added to library",
+          description: "Book added to your library"
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to update library",
+        variant: "destructive"
       });
-    } catch (error) {
-      console.error("Error requesting next chunks:", error);
     } finally {
-      setNextChunksLoading(false);
+      setLibraryLoading(false);
     }
   };
 
-  const shareBook = () => {
+  const handleToggleFavorite = async () => {
+    if (!user) {
+      navigate("/auth");
+      return;
+    }
+
+    if (!book) return;
+
+    try {
+      setLibraryLoading(true);
+      const response = await toggleFavorite(book.id);
+
+      if (response.status === 'PASS') {
+        setIsFavorite(response.data.is_favorite);
+        setIsInLibrary(true); // Favoriting automatically adds to library
+        toast({
+          title: response.data.is_favorite ? "Added to favorites" : "Removed from favorites",
+          description: response.data.message
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to update favorite",
+        variant: "destructive"
+      });
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  const handleShare = () => {
     if (navigator.share) {
       navigator.share({
         title: book?.title || "KitaabSe Audiobook",
@@ -262,11 +330,16 @@ const BookPlayer = () => {
     }
   };
 
-  const getCurrentChunk = (): Chunk | undefined => {
-    return chunks[currentChunkIndex];
+  const formatTime = (seconds: number): string => {
+    if (isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const currentChunk = getCurrentChunk();
+  const currentPage = pages[currentPageIndex];
+  const completedPages = pages.filter(p => p.processing_status === 'completed').length;
+  const totalPages = pages.length;
 
   if (loading) {
     return (
@@ -287,7 +360,9 @@ const BookPlayer = () => {
           <Card>
             <CardContent className="py-10 text-center">
               <h2 className="text-2xl font-bold mb-2">Book not found</h2>
-              <p className="text-gray-500 mb-6">The book you're looking for doesn't exist or you don't have permission to view it.</p>
+              <p className="text-gray-500 mb-6">
+                The book you're looking for doesn't exist or you don't have permission to view it.
+              </p>
               <Button onClick={() => navigate("/")}>Go back home</Button>
             </CardContent>
           </Card>
@@ -300,169 +375,281 @@ const BookPlayer = () => {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <div className="container mx-auto py-6 px-4">
-        <Button 
-          variant="ghost" 
-          onClick={() => navigate(-1)} 
+        <Button
+          variant="ghost"
+          onClick={() => navigate(-1)}
           className="mb-4"
         >
           <ArrowLeft className="h-4 w-4 mr-2" /> Back
         </Button>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Book info column */}
           <div className="md:col-span-1">
             <Card>
               <CardContent className="pt-6">
-                <div className="aspect-[2/3] bg-amber-100 rounded-lg flex items-center justify-center mb-4">
-                  {book.cover_url ? (
-                    <img 
-                      src={book.cover_url} 
-                      alt={book.title} 
-                      className="w-full h-full object-cover rounded-lg"
+                {/* Cover Image */}
+                <div className="aspect-[2/3] bg-gradient-to-br from-amber-100 to-orange-100 rounded-lg flex items-center justify-center mb-4 overflow-hidden">
+                  {book.cover_url || book.cover_image ? (
+                    <img
+                      src={book.cover_url || book.cover_image || ''}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
                     />
                   ) : (
                     <div className="text-center p-4">
-                      <span className="text-3xl font-bold text-amber-800">{book.title}</span>
-                      <br />
+                      <span className="text-3xl font-bold text-amber-800 block mb-2">
+                        {book.title}
+                      </span>
                       <span className="text-xl text-amber-700">{book.author}</span>
                     </div>
                   )}
                 </div>
-                
-                <h1 className="text-2xl font-bold">{book.title}</h1>
-                <h2 className="text-lg text-gray-600 mb-2">{book.author}</h2>
-                
-                <div className="flex items-center justify-between mb-4">
-                  <span className="capitalize text-sm bg-gray-100 px-2 py-1 rounded">
+
+                {/* Book Info */}
+                <h1 className="text-2xl font-bold mb-1">{book.title}</h1>
+                <h2 className="text-lg text-gray-600 mb-3">{book.author || 'Unknown Author'}</h2>
+
+                {/* Metadata */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <Badge variant="outline" className="capitalize">
                     {book.language}
+                  </Badge>
+                  {book.genre && (
+                    <Badge variant="outline" className="capitalize">
+                      {book.genre.replace('_', ' ')}
+                    </Badge>
+                  )}
+                  <Badge variant={book.processing_status === 'completed' ? 'default' : 'secondary'}>
+                    {book.processing_status}
+                  </Badge>
+                </div>
+
+                {/* Stats */}
+                <div className="flex items-center justify-between mb-4 text-sm text-gray-600">
+                  <span className="flex items-center gap-1">
+                    <Heart className="h-4 w-4" />
+                    {book.favorite_count || 0} likes
                   </span>
-                  <span className="flex items-center text-sm text-gray-500">
-                    <Heart className="h-4 w-4 mr-1 fill-red-500 text-red-500" />
-                    {book.likes_count}
+                  <span>
+                    {book.listen_count || 0} listens
                   </span>
                 </div>
-                
+
+                {/* Description */}
                 {book.description && (
                   <>
                     <Separator className="my-3" />
-                    <p className="text-sm text-gray-700">{book.description}</p>
+                    <p className="text-sm text-gray-700 line-clamp-4">{book.description}</p>
                   </>
                 )}
-                
-                <div className="mt-4 flex space-x-2">
+
+                {/* Action Buttons */}
+                <div className="mt-4 flex flex-col gap-2">
                   <Button
-                    variant={book.user_has_liked ? "default" : "outline"}
-                    className={book.user_has_liked ? "bg-red-500 hover:bg-red-600" : ""}
-                    onClick={toggleLike}
-                    disabled={liking}
+                    variant={isFavorite ? "default" : "outline"}
+                    className={isFavorite ? "bg-red-500 hover:bg-red-600" : ""}
+                    onClick={handleToggleFavorite}
+                    disabled={libraryLoading}
                   >
-                    {liking ? (
+                    {libraryLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : (
-                      <Heart className={`h-4 w-4 mr-2 ${book.user_has_liked ? "fill-white" : ""}`} />
+                      <Heart className={`h-4 w-4 mr-2 ${isFavorite ? "fill-white" : ""}`} />
                     )}
-                    {book.user_has_liked ? "Liked" : "Like"}
+                    {isFavorite ? "Favorited" : "Add to Favorites"}
                   </Button>
-                  
-                  <Button variant="outline" onClick={shareBook}>
+
+                  <Button
+                    variant={isInLibrary ? "default" : "outline"}
+                    onClick={handleAddToLibrary}
+                    disabled={libraryLoading}
+                  >
+                    {libraryLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : isInLibrary ? (
+                      <BookmarkCheck className="h-4 w-4 mr-2" />
+                    ) : (
+                      <BookmarkPlus className="h-4 w-4 mr-2" />
+                    )}
+                    {isInLibrary ? "In Library" : "Add to Library"}
+                  </Button>
+
+                  <Button variant="outline" onClick={handleShare}>
                     <Share2 className="h-4 w-4 mr-2" />
                     Share
                   </Button>
                 </div>
-                
+
                 <Separator className="my-4" />
-                
-                <div className="text-sm text-gray-500">
-                  <p>Total chunks: {chunks.length}</p>
-                  <p>Ready chunks: {chunks.filter(c => c.status === "completed").length}</p>
+
+                {/* Processing Info */}
+                <div className="text-sm text-gray-500 space-y-1">
+                  <p>Total pages: {totalPages}</p>
+                  <p>Ready: {completedPages}/{totalPages}</p>
+                  {progress && (
+                    <p className="text-amber-600 font-medium">
+                      Progress: {progress.completion_percentage}%
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
           </div>
-          
+
           {/* Player column */}
           <div className="md:col-span-2">
             <Card className="h-full flex flex-col">
               <CardContent className="flex-grow flex flex-col pt-6">
-                <div className="flex-grow">
-                  {currentChunk ? (
-                    <>
-                      {currentChunk.status === "completed" && currentChunk.audio_url ? (
+                {pages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full bg-gray-50 rounded-lg p-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-amber-600 mb-3" />
+                    <p className="text-gray-600">Processing book pages...</p>
+                    <p className="text-gray-500 text-sm mt-2">
+                      This may take a few minutes
+                    </p>
+                  </div>
+                ) : currentPage ? (
+                  <div className="flex-grow flex flex-col">
+                    {/* Current Page Info */}
+                    <div className="bg-amber-50 p-4 rounded-lg mb-4">
+                      <div className="flex items-center justify-between">
                         <div>
-                          <audio
-                            ref={audioRef}
-                            src={currentChunk.audio_url}
-                            onPlay={() => setIsPlaying(true)}
-                            onPause={() => setIsPlaying(false)}
-                            onEnded={onAudioEnded}
-                          />
-                          
-                          <div className="bg-amber-50 p-4 rounded-lg mb-4">
-                            <h3 className="font-semibold mb-2">Now playing:</h3>
-                            <p className="text-sm text-gray-700">Chunk {currentChunk.chunk_number} of {chunks.length}</p>
-                          </div>
-                          
-                          {currentChunk.text_content && (
-                            <div className="bg-white border border-gray-200 p-4 rounded-lg mb-6 max-h-60 overflow-y-auto font-hindi">
-                              {currentChunk.text_content}
-                            </div>
-                          )}
-                          
-                          {nextChunksLoading && currentChunkIndex >= chunks.length - 2 && (
-                            <div className="flex items-center justify-center p-3 bg-amber-50 rounded-lg mb-4">
-                              <Loader2 className="h-4 w-4 animate-spin mr-2 text-amber-600" />
-                              <span className="text-amber-800 text-sm">Generating next part...</span>
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center justify-center space-x-4 mt-6">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={prevChunk}
-                              disabled={currentChunkIndex === 0}
-                            >
-                              <SkipBack className="h-6 w-6" />
-                            </Button>
-                            
-                            <Button
-                              size="icon"
-                              className="h-12 w-12 rounded-full"
-                              onClick={playPause}
-                            >
-                              {isPlaying ? (
-                                <Pause className="h-6 w-6" />
-                              ) : (
-                                <Play className="h-6 w-6" />
-                              )}
-                            </Button>
-                            
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={nextChunk}
-                              disabled={currentChunkIndex === chunks.length - 1}
-                            >
-                              <SkipForward className="h-6 w-6" />
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-60 bg-gray-50 rounded-lg">
-                          <Loader2 className="h-8 w-8 animate-spin text-amber-600 mb-3" />
-                          <p className="text-gray-600">Processing audio chunk...</p>
-                          <p className="text-gray-500 text-sm mt-2">
-                            Chunk {currentChunk.chunk_number} is being generated
+                          <h3 className="font-semibold">Page {currentPage.page_number}</h3>
+                          <p className="text-sm text-gray-600">
+                            {currentPageIndex + 1} of {totalPages}
                           </p>
                         </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-60 bg-gray-50 rounded-lg">
-                      <p className="text-gray-600">No audio chunks available</p>
+                        <Badge variant={
+                          currentPage.processing_status === 'completed' ? 'default' :
+                          currentPage.processing_status === 'processing' ? 'secondary' : 'outline'
+                        }>
+                          {currentPage.processing_status}
+                        </Badge>
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    {/* Text Content */}
+                    {currentPage.text_content && (
+                      <div className="bg-white border border-gray-200 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto">
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                          {currentPage.text_content}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Audio Player */}
+                    {currentPage.processing_status === 'completed' && currentPage.audio_url ? (
+                      <div className="mt-auto">
+                        <audio
+                          ref={audioRef}
+                          src={currentPage.audio_url}
+                          onPlay={() => setIsPlaying(true)}
+                          onPause={() => setIsPlaying(false)}
+                        />
+
+                        {/* Progress Bar */}
+                        <div className="mb-4">
+                          <Slider
+                            value={[currentTime]}
+                            max={duration || 100}
+                            step={0.1}
+                            onValueChange={handleSeek}
+                            className="mb-2"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500">
+                            <span>{formatTime(currentTime)}</span>
+                            <span>{formatTime(duration)}</span>
+                          </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="flex items-center justify-center gap-4 mb-4">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handlePreviousPage}
+                            disabled={currentPageIndex === 0}
+                          >
+                            <SkipBack className="h-5 w-5" />
+                          </Button>
+
+                          <Button
+                            size="icon"
+                            className="h-14 w-14 rounded-full"
+                            onClick={togglePlayPause}
+                          >
+                            {isPlaying ? (
+                              <Pause className="h-6 w-6" />
+                            ) : (
+                              <Play className="h-6 w-6 ml-1" />
+                            )}
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handleNextPage}
+                            disabled={currentPageIndex === pages.length - 1}
+                          >
+                            <SkipForward className="h-5 w-5" />
+                          </Button>
+                        </div>
+
+                        {/* Volume Control */}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={toggleMute}
+                          >
+                            {isMuted || volume === 0 ? (
+                              <VolumeX className="h-4 w-4" />
+                            ) : (
+                              <Volume2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Slider
+                            value={[isMuted ? 0 : volume]}
+                            max={1}
+                            step={0.01}
+                            onValueChange={handleVolumeChange}
+                            className="w-24"
+                          />
+                        </div>
+
+                        {savingProgress && (
+                          <p className="text-xs text-gray-500 mt-2 text-center">
+                            Saving progress...
+                          </p>
+                        )}
+                      </div>
+                    ) : currentPage.processing_status === 'processing' ? (
+                      <div className="flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8 mt-auto">
+                        <Loader2 className="h-8 w-8 animate-spin text-amber-600 mb-3" />
+                        <p className="text-gray-600">Processing audio for this page...</p>
+                        <p className="text-gray-500 text-sm mt-2">
+                          Page {currentPage.page_number} is being converted to audio
+                        </p>
+                      </div>
+                    ) : currentPage.processing_status === 'failed' ? (
+                      <div className="flex flex-col items-center justify-center bg-red-50 rounded-lg p-8 mt-auto">
+                        <p className="text-red-600 font-medium mb-2">Audio generation failed</p>
+                        <p className="text-red-500 text-sm text-center">
+                          {currentPage.processing_error || 'Unable to generate audio for this page'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8 mt-auto">
+                        <p className="text-gray-600">Audio not yet generated for this page</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full bg-gray-50 rounded-lg">
+                    <p className="text-gray-600">No pages available</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -94,7 +94,7 @@ const FeaturedBooks = () => {
               <BookCard
                 title={book.title}
                 author={book.author || "Unknown Author"}
-                coverImage={book.cover_image || undefined}
+                coverImage={book.cover_url || book.cover_image || undefined}
                 language={book.language}
                 likes={book.favorite_count || 0}
               />
