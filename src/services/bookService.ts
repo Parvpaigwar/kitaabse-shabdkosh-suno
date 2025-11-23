@@ -100,6 +100,33 @@ export interface ProgressItem {
   completed_at: string | null;
 }
 
+export interface UpdateBookRequest {
+  title?: string;
+  author?: string;
+  description?: string;
+  genre?: string;
+  is_public?: boolean;
+}
+
+export interface BookProcessingStatus {
+  book_id: number;
+  title: string;
+  processing_status: string;
+  processing_progress: number;
+  total_pages: number;
+  pages_status: {
+    pending: number;
+    processing: number;
+    completed: number;
+    failed: number;
+  };
+  audio_ready: boolean;
+  pages_with_audio: number;
+  estimated_time_remaining: string;
+  created_at: string;
+  last_updated: string;
+}
+
 // API Functions
 
 /**
@@ -199,5 +226,32 @@ export const updateProgress = async (
  */
 export const getMyProgress = async (params?: { in_progress?: boolean; completed?: boolean }): Promise<APIResponse<ProgressItem[]>> => {
   const response = await api.get<APIResponse<ProgressItem[]>>('/api/books/progress/', { params });
+  return response.data;
+};
+
+/**
+ * Update Book Details
+ * Update book metadata (only by the uploader).
+ */
+export const updateBook = async (bookId: number, data: UpdateBookRequest): Promise<APIResponse<Book>> => {
+  const response = await api.patch<APIResponse<Book>>(`/api/books/${bookId}/`, data);
+  return response.data;
+};
+
+/**
+ * Delete Book
+ * Soft delete a book (only by the uploader).
+ */
+export const deleteBook = async (bookId: number): Promise<APIResponse<{ id: number }>> => {
+  const response = await api.delete<APIResponse<{ id: number }>>(`/api/books/${bookId}/`);
+  return response.data;
+};
+
+/**
+ * Get Book Processing Status
+ * Get detailed processing status for a book including page-by-page progress.
+ */
+export const getBookStatus = async (bookId: number): Promise<APIResponse<BookProcessingStatus>> => {
+  const response = await api.get<APIResponse<BookProcessingStatus>>(`/api/books/${bookId}/status/`);
   return response.data;
 };

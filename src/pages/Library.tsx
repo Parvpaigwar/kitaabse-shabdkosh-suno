@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getMyBooks, Book } from "@/services/bookService";
+import { getMyBooks, Book, updateBook, deleteBook, UpdateBookRequest } from "@/services/bookService";
 import { getMyLibrary, LibraryItem, removeFromLibrary, toggleFavorite } from "@/services/libraryService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -10,6 +10,12 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   BookOpen,
   Trash2,
@@ -21,9 +27,18 @@ import {
   Clock,
   Heart,
   BookMarked,
-  Upload
+  Upload,
+  Edit,
+  MoreVertical
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import Navbar from "@/components/Navbar";
+import { ProcessingStatus } from "@/components/ProcessingStatus";
 
 const Library = () => {
   const { user, userRole } = useAuth();
@@ -41,6 +56,21 @@ const Library = () => {
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'library' | 'uploaded'>('library');
+
+  // Edit Book State
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const [editFormData, setEditFormData] = useState<UpdateBookRequest>({});
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  // Delete Book State
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingBook, setDeletingBook] = useState<Book | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Processing Status State
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusBookId, setStatusBookId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -136,6 +166,95 @@ const Library = () => {
         variant: "destructive"
       });
     }
+  };
+
+  const handleEditBook = (book: Book) => {
+    setEditingBook(book);
+    setEditFormData({
+      title: book.title,
+      author: book.author || '',
+      description: book.description || '',
+      genre: book.genre || '',
+      is_public: book.is_public,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateBook = async () => {
+    if (!editingBook) return;
+
+    try {
+      setIsUpdating(true);
+      const response = await updateBook(editingBook.id, editFormData);
+
+      if (response.status === 'PASS') {
+        toast({
+          title: "Book updated successfully",
+          description: "Your changes have been saved"
+        });
+        setEditDialogOpen(false);
+        setEditingBook(null);
+        setEditFormData({});
+        fetchUploadedBooks();
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error updating book",
+        description: error.response?.data?.message || error.message || "Failed to update book",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDeleteBook = (book: Book) => {
+    setDeletingBook(book);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteBook = async () => {
+    if (!deletingBook) return;
+
+    try {
+      setIsDeleting(true);
+      const response = await deleteBook(deletingBook.id);
+
+      if (response.status === 'PASS') {
+        toast({
+          title: "Book deleted successfully",
+          description: "The book has been removed from your uploads"
+        });
+        setDeleteDialogOpen(false);
+        setDeletingBook(null);
+        fetchUploadedBooks();
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error deleting book",
+        description: error.response?.data?.message || error.message || "Failed to delete book",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const viewProcessingStatus = (bookId: number) => {
+    setStatusBookId(bookId);
+    setStatusDialogOpen(true);
+  };
+
+  const handleProcessingComplete = () => {
+    toast({
+      title: "Processing Complete!",
+      description: "Your book is ready to listen"
+    });
+    fetchUploadedBooks();
   };
 
   const getStatusBadge = (status: string) => {
@@ -398,7 +517,29 @@ const Library = () => {
                     <CardHeader>
                       <div className="flex items-start justify-between mb-2">
                         <CardTitle className="text-lg line-clamp-2">{book.title}</CardTitle>
-                        {getStatusBadge(book.processing_status)}
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(book.processing_status)}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEditBook(book)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteBook(book)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Book
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                       <CardDescription className="line-clamp-1">
                         by {book.author || 'Unknown Author'}
@@ -474,16 +615,36 @@ const Library = () => {
 
                     <Separator />
 
-                    <CardFooter className="flex justify-between gap-2 pt-4">
-                      <Button
-                        onClick={() => playBook(book.id)}
-                        disabled={book.processing_status !== 'completed'}
-                        className="flex-1"
-                        variant={book.processing_status === 'completed' ? 'default' : 'secondary'}
-                      >
-                        <Play className="h-4 w-4 mr-2" />
-                        {book.processing_status === 'completed' ? 'Listen' : 'Processing...'}
-                      </Button>
+                    <CardFooter className="flex flex-col gap-2 pt-4">
+                      {book.processing_status === 'completed' ? (
+                        <Button
+                          onClick={() => playBook(book.id)}
+                          className="w-full"
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Listen
+                        </Button>
+                      ) : (
+                        <div className="flex gap-2 w-full">
+                          <Button
+                            onClick={() => viewProcessingStatus(book.id)}
+                            variant="outline"
+                            className="flex-1"
+                          >
+                            <Loader2 className="h-4 w-4 mr-2" />
+                            View Status
+                          </Button>
+                          <Button
+                            onClick={() => playBook(book.id)}
+                            disabled
+                            variant="secondary"
+                            className="flex-1"
+                          >
+                            <Play className="h-4 w-4 mr-2" />
+                            Listen
+                          </Button>
+                        </div>
+                      )}
                     </CardFooter>
                   </Card>
                 ))}
@@ -492,6 +653,177 @@ const Library = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Edit Book Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Book Details</DialogTitle>
+            <DialogDescription>
+              Update the information for "{editingBook?.title}"
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Title</Label>
+              <Input
+                id="edit-title"
+                value={editFormData.title || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                placeholder="Book title"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-author">Author</Label>
+              <Input
+                id="edit-author"
+                value={editFormData.author || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, author: e.target.value })}
+                placeholder="Author name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editFormData.description || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                placeholder="Book description"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-genre">Genre</Label>
+              <Select
+                value={editFormData.genre || ''}
+                onValueChange={(value) => setEditFormData({ ...editFormData, genre: value })}
+              >
+                <SelectTrigger id="edit-genre">
+                  <SelectValue placeholder="Select genre" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="literature">Literature</SelectItem>
+                  <SelectItem value="fiction">Fiction</SelectItem>
+                  <SelectItem value="non_fiction">Non-Fiction</SelectItem>
+                  <SelectItem value="poetry">Poetry</SelectItem>
+                  <SelectItem value="drama">Drama</SelectItem>
+                  <SelectItem value="biography">Biography</SelectItem>
+                  <SelectItem value="history">History</SelectItem>
+                  <SelectItem value="science">Science</SelectItem>
+                  <SelectItem value="philosophy">Philosophy</SelectItem>
+                  <SelectItem value="religion">Religion</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-visibility">Visibility</Label>
+              <Select
+                value={editFormData.is_public ? 'public' : 'private'}
+                onValueChange={(value) => setEditFormData({ ...editFormData, is_public: value === 'public' })}
+              >
+                <SelectTrigger id="edit-visibility">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      Public - Anyone can view
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="private">
+                    <div className="flex items-center gap-2">
+                      <Lock className="h-4 w-4" />
+                      Private - Only you can view
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={isUpdating}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateBook} disabled={isUpdating}>
+              {isUpdating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Book Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{deletingBook?.title}". This action cannot be undone.
+              All associated data including pages, audio files, and user progress will be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteBook}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Book'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Processing Status Dialog */}
+      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Book Processing Status</DialogTitle>
+            <DialogDescription>
+              Real-time processing updates for your book
+            </DialogDescription>
+          </DialogHeader>
+
+          {statusBookId && (
+            <ProcessingStatus
+              bookId={statusBookId}
+              onComplete={handleProcessingComplete}
+              pollInterval={5000}
+              autoStop={true}
+            />
+          )}
+
+          <DialogFooter>
+            <Button onClick={() => setStatusDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

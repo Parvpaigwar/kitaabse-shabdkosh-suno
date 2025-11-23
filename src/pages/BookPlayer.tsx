@@ -531,8 +531,8 @@ const BookPlayer = () => {
 
                     {/* Text Content */}
                     {currentPage.text_content && (
-                      <div className="bg-white border border-gray-200 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto">
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                      <div className="bg-white border border-gray-200 p-6 rounded-lg mb-4 overflow-y-auto flex-grow">
+                        <p className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed">
                           {currentPage.text_content}
                         </p>
                       </div>
