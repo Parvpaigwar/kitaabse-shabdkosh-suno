@@ -44,7 +44,7 @@ export const VerifyOTPForm = ({ email, onSuccess, onBack }: VerifyOTPFormProps) 
     if (otp.length !== 6) {
       toast({
         title: "Invalid OTP",
-        description: "Please enter the 6-digit code sent to your email.",
+        description: "Please enter the 6-digit code sent to your email (maybe in spam folder).",
         variant: "destructive",
       });
       return;
