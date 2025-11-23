@@ -24,7 +24,7 @@ type AuthContextType = {
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
   openAuthModal: (closeable?: boolean) => void;
-  closeAuthModal: () => void;
+  closeAuthModal: (force?: boolean) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -123,9 +123,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setShowAuthModal(true);
   };
 
-  const closeAuthModal = () => {
-    if (authModalCloseable) {
+  const closeAuthModal = (force: boolean = false) => {
+    if (authModalCloseable || force) {
       setShowAuthModal(false);
+      // Reset to closeable when closing
+      setAuthModalCloseable(true);
     }
   };
 

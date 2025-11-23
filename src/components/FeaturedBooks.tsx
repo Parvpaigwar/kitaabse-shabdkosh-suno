@@ -21,7 +21,7 @@ const FeaturedBooks = () => {
 
   useEffect(() => {
     fetchBooks(filter, sort);
-  }, [filter, sort]);
+  }, [filter, sort, user]); // Refetch when user logs in/out
 
   const fetchBooks = async (filterValue: string, sortValue: string) => {
     setLoading(true);

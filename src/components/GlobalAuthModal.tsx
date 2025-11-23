@@ -13,7 +13,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 type AuthView = "login" | "signup" | "otp";
 
 export const GlobalAuthModal = () => {
-  const { showAuthModal, authModalCloseable, closeAuthModal, setUser, setToken } = useAuth();
+  const { showAuthModal, authModalCloseable, closeAuthModal, setUser, setToken, openAuthModal } = useAuth();
   const [authView, setAuthView] = useState<AuthView>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -49,7 +49,10 @@ export const GlobalAuthModal = () => {
           description: "Welcome back to KitaabSe!",
         });
 
-        closeAuthModal();
+        // Force close the modal (FeaturedBooks will auto-refresh when user state changes)
+        setTimeout(() => {
+          closeAuthModal(true);
+        }, 100);
       } else {
         throw new Error(response.message);
       }
@@ -107,6 +110,15 @@ export const GlobalAuthModal = () => {
       return;
     }
 
+    if (!password) {
+      toast({
+        title: "Password required",
+        description: "Please enter a password.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -121,9 +133,9 @@ export const GlobalAuthModal = () => {
           description: "Welcome to KitaabSe! You're now logged in.",
         });
 
-        // Small delay to ensure state updates before closing
+        // Force close the modal (FeaturedBooks will auto-refresh when user state changes)
         setTimeout(() => {
-          closeAuthModal();
+          closeAuthModal(true);
         }, 100);
       } else {
         throw new Error(response.message);
@@ -171,12 +183,11 @@ export const GlobalAuthModal = () => {
             <Input
               id="otp-password"
               type="password"
-              placeholder="Create a strong password"
+              placeholder="Create a password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
-              minLength={8}
             />
           </div>
           <div className="flex gap-2">
@@ -223,6 +234,7 @@ export const GlobalAuthModal = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
+                autoFocus={false}
               />
             </div>
             <div className="space-y-2">
@@ -295,6 +307,7 @@ export const GlobalAuthModal = () => {
     <Dialog open={showAuthModal} onOpenChange={(open) => !open && authModalCloseable && closeAuthModal()}>
       <DialogContent
         className="sm:max-w-md"
+        onOpenAutoFocus={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => {
           if (!authModalCloseable) {
             e.preventDefault();
