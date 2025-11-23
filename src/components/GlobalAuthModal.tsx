@@ -75,8 +75,8 @@ export const GlobalAuthModal = () => {
 
       if (response.status === 'PASS') {
         toast({
-          title: "Signup successful",
-          description: "Please check your email for a verification code.",
+          title: "OTP sent successfully!",
+          description: "Please check your email for the verification code. Check spam folder if not found.",
         });
         setAuthView("otp");
       } else {
@@ -117,11 +117,14 @@ export const GlobalAuthModal = () => {
         setToken(response.data.token);
 
         toast({
-          title: "Verification successful",
-          description: "Your account has been verified!",
+          title: "Account created successfully!",
+          description: "Welcome to KitaabSe! You're now logged in.",
         });
 
-        closeAuthModal();
+        // Small delay to ensure state updates before closing
+        setTimeout(() => {
+          closeAuthModal();
+        }, 100);
       } else {
         throw new Error(response.message);
       }
@@ -157,7 +160,10 @@ export const GlobalAuthModal = () => {
               </InputOTP>
             </div>
             <p className="text-sm text-muted-foreground text-center">
-              Please enter the 6-digit code sent to {email}
+              Please enter the 6-digit code sent to <span className="font-medium">{email}</span>
+            </p>
+            <p className="text-xs text-muted-foreground text-center mt-1">
+              Can't find the email? Check your spam/junk folder.
             </p>
           </div>
           <div className="space-y-2">
@@ -305,7 +311,7 @@ export const GlobalAuthModal = () => {
           <DialogDescription className="text-center">
             {authModalCloseable
               ? "हिन्दी साहित्य की गूंज"
-              : "Session expired. Please login again to continue."}
+              : "Your session has expired. Please log in to continue using KitaabSe."}
           </DialogDescription>
         </DialogHeader>
         {renderAuthContent()}
