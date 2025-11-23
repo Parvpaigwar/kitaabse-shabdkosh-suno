@@ -173,7 +173,7 @@ export const BookForm = () => {
                   <Progress value={uploadProgress.progress} className="h-2" />
                   <div className="flex justify-between text-xs text-gray-600">
                     <span>
-                      {uploadProgress.status === 'processing' && 'OCR Processing'}
+                      {uploadProgress.status === 'processing' && 'Extraction Processing'}
                       {uploadProgress.status === 'audio_generation' && 'Generating Audio'}
                       {uploadProgress.status === 'completed' && 'Completed'}
                     </span>
