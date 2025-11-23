@@ -8,11 +8,23 @@ interface BookCardProps {
   coverImage?: string;
   language?: string;
   likes?: number;
-  likesCount?: number; // Added this property
+  likesCount?: number;
   isLiked?: boolean;
+  onLike?: (e: React.MouseEvent) => void;
+  onPlay?: (e: React.MouseEvent) => void;
 }
 
-const BookCard = ({ title, author, language = "Hindi", likes = 0, likesCount = 0, coverImage, isLiked = false }: BookCardProps) => {
+const BookCard = ({
+  title,
+  author,
+  language = "Hindi",
+  likes = 0,
+  likesCount = 0,
+  coverImage,
+  isLiked = false,
+  onLike,
+  onPlay
+}: BookCardProps) => {
   // Use either likes or likesCount, with likesCount taking precedence
   const displayLikes = likesCount || likes;
   
@@ -55,16 +67,21 @@ const BookCard = ({ title, author, language = "Hindi", likes = 0, likesCount = 0
 
         {/* Action Buttons */}
         <div className="flex gap-2 pt-2">
-          <Button size="sm" className="flex-1 bg-maroon-600 hover:bg-maroon-700">
+          <Button
+            size="sm"
+            className="flex-1 bg-maroon-600 hover:bg-maroon-700"
+            onClick={onPlay}
+          >
             <Play size={16} className="mr-2" />
             Listen
           </Button>
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="border-maroon-300 text-maroon-700 hover:bg-maroon-50"
+          <Button
+            size="sm"
+            variant="outline"
+            className={`border-maroon-300 ${isLiked ? 'text-red-500 bg-red-50 border-red-300' : 'text-maroon-700'} hover:bg-maroon-50`}
+            onClick={onLike}
           >
-            <Heart size={16} />
+            <Heart size={16} className={isLiked ? 'fill-current' : ''} />
           </Button>
         </div>
       </div>
